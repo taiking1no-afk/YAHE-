@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter doctor *)",
+      "Bash(flutter build *)",
+      "Bash(echo \"Install exit: $?\")",
+      "Bash(echo \"Launch exit: $?\")",
+      "Bash(echo \"RUN_EXIT: $?\")",
+      "Bash(curl -s \"https://pub.dev/api/packages/flutter_ble_peripheral\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d['latest']['version']\\)\")",
+      "Bash(codesign --force --sign 'Apple Development: Taiki Nozawa \\(S4CVP6S46U\\)' --timestamp=none --entitlements /Users/nozawataiki/Desktop/Cursor/surf/ios/Runner/Runner.entitlements /tmp/surf-yahe-build/ios/Debug-iphoneos/Runner.app)",
+      "Bash(codesign -d --entitlements - /tmp/surf-yahe-build/ios/Debug-iphoneos/Runner.app/Runner)",
+      "Bash(codesign -d --entitlements :- /tmp/surf-yahe-build/ios/Debug-iphoneos/Runner.app)",
+      "Bash(find ~/Library/Developer/Xcode/DerivedData -name \"Runner.app\" -path \"*/Debug-iphoneos/*\" 2>/dev/null | head -3)",
+      "Read(//Users/nozawataiki/Library/Developer/Xcode/DerivedData/**)",
+      "Bash(codesign --display --verbose /tmp/surf-yahe-build/ios/iphoneos/Runner.app)",
+      "Bash(codesign -d --entitlements :- /tmp/surf-yahe-build/ios/iphoneos/Runner.app)",
+      "Bash(codesign --display --verbose /tmp/surf-yahe-build/ios/iphoneos/Runner.app/Frameworks/objective_c.framework/objective_c)"
+    ]
+  }
+}

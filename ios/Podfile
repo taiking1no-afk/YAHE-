@@ -1,0 +1,58 @@
+platform :ios, '13.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks! :linkage => :static
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  # CocoaPods CDN が 403 / 版リスト古い端末向けに、ローカルにある版へ固定。
+  # （AppCheckCore は index 上 11.2.0 まで、GoogleUtilities / PromisesObjC も同様）
+  pod 'AppCheckCore', '11.2.0'
+  pod 'GoogleUtilities', '8.1.0'
+  pod 'PromisesObjC', '2.4.0'
+
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+  end
+
+  # Desktop + Pods symlink 利用時に PODS_ROOT が /tmp 絶対パスになるのを防ぐ
+  %w[Pods-Runner Pods-RunnerTests].each do |name|
+    Dir.glob(installer.sandbox.root + "Target Support Files/#{name}/*.xcconfig").each do |path|
+      contents = File.read(path)
+      fixed = contents.gsub(/^PODS_ROOT = .*/, 'PODS_ROOT = ${SRCROOT}/Pods')
+      File.write(path, fixed) if fixed != contents
+    end
+  end
+end

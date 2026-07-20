@@ -1,0 +1,38 @@
+name: Gear R 月次レポート配信
+
+# 毎月1日 10:00 JST (01:00 UTC) に gear-r-monthly Edge Function を呼び出し、
+# Gear R購入者への月次アクセス解析レポート生成・プッシュ通知配信をトリガーする。
+#
+# 事前準備（このリポジトリの Settings > Secrets and variables > Actions で設定）:
+#   SUPABASE_PROJECT_URL … 例 https://xxxxx.supabase.co
+#   OPS_ALERT_SECRET      … supabase secrets set した OPS_ALERT_SECRET と同じ値
+#
+# 手動実行: Actions タブから "Run workflow" でも即時トリガー可能（動作確認用）
+
+on:
+  schedule:
+    - cron: '0 1 1 * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger-gear-r-monthly:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call gear-r-monthly Edge Function
+        run: |
+          response=$(curl -sS -w "\n%{http_code}" -X POST \
+            "${SUPABASE_PROJECT_URL}/functions/v1/gear-r-monthly" \
+            -H "Content-Type: application/json" \
+            -H "x-ops-secret: ${OPS_ALERT_SECRET}" \
+            -d '{"action":"deliver"}')
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP status: $http_code"
+          echo "Response: $body"
+          if [ "$http_code" -ge 400 ]; then
+            echo "gear-r-monthly returned an error"
+            exit 1
+          fi
+        env:
+          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
+          OPS_ALERT_SECRET: ${{ secrets.OPS_ALERT_SECRET }}

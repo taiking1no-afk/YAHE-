@@ -1,0 +1,66 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+.env
+.env.*
+dart_defines.json
+**/GoogleService-Info.plist
+google-services.json
+
+# iOS CocoaPods（pod install で再生成される）
+ios/Pods/
+
+# ログ・IDE個人設定
+*.log
+.idea/
+surf.iml
+
+# iCloud同期の衝突コピー（"名前 2"形式）対策。本来は同期対象から
+# 外すべきだが、誤ってコミットされないよう明示的に除外しておく。
+build.desktop.bak/
+*[ ][0-9]
+*[ ][0-9][0-9]
+*[ ][0-9].*
+*[ ][0-9][0-9].*

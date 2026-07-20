@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"BUILD_EXIT: $?\")",
+      "Bash(xargs cat)",
+      "Bash(python3 -m json.tool)"
+    ]
+  }
+}

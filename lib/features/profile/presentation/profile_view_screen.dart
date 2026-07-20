@@ -1,0 +1,545 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_constants.dart';
+import '../../../shared/widgets/signed_storage_image.dart';
+import '../../../shared/widgets/vehicle_detail_card.dart';
+import '../../../shared/widgets/yahe_app_bar.dart';
+import '../../../shared/providers/tab_provider.dart';
+import '../../auth/presentation/auth_provider.dart';
+import '../../notifications/presentation/notifications_screen.dart';
+import '../../settings/presentation/settings_screen.dart';
+import '../../vehicle/presentation/vehicle_register_provider.dart';
+import '../../vehicle/models/vehicle.dart';
+import '../../../shared/models/encounter_stats.dart';
+import 'encounter_stats_provider.dart';
+import 'profile_edit_screen.dart';
+
+class ProfileViewScreen extends ConsumerWidget {
+  const ProfileViewScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userAsync = ref.watch(authNotifierProvider);
+    final user = userAsync.value;
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: YaheAppBar(
+        title: 'プロフィール',
+        showBack: false,
+        actions: [
+          // ベルアイコン（未読バッジ付き）
+          _BellButton(),
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, color: AppColors.primary),
+            tooltip: 'プロフィール編集',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
+            ).then((_) => ref.invalidate(authNotifierProvider)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: '設定',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+        ],
+      ),
+      body: userAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+        error: (_, __) => const Center(child: Text('読み込みに失敗しました')),
+        data: (user) {
+          if (user == null) return const Center(child: Text('ログインが必要です'));
+          final vehiclesAsync = ref.watch(allVehiclesProvider(user.userId));
+          final statsAsync = ref.watch(encounterStatsProvider(user.userId));
+
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ─── ヘッダー（プロフィール写真 + 基本情報）
+                _ProfileHeader(user: user, stats: statsAsync.valueOrNull),
+
+                // ─── SNSリンク
+                if (user.snsLinks.isNotEmpty)
+                  _SnsSection(snsLinks: user.snsLinks),
+
+                // ─── 愛車一覧
+                vehiclesAsync.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                  ),
+                  error: (_, __) => const SizedBox.shrink(),
+                  data: (vehicles) => vehicles.isEmpty
+                      ? const SizedBox.shrink()
+                      : _VehiclesSection(vehicles: vehicles),
+                ),
+
+                const SizedBox(height: 32),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ─── プロフィールヘッダー ─────────────────────────────────
+class _ProfileHeader extends StatelessWidget {
+  final dynamic user;
+  final EncounterStats? stats;
+  const _ProfileHeader({required this.user, this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.surface,
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      child: Column(
+        children: [
+          // アバター
+          _Avatar(
+            avatarUrl: user.avatarUrl,
+            nickname: user.nickname,
+            radius: 44,
+          ),
+          const SizedBox(height: 14),
+
+          // ニックネーム
+          Text(
+            user.nickname as String? ?? '名無し',
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+
+          // 居住エリア
+          if (user.area != null) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.location_on_outlined, size: 14, color: AppColors.textMuted),
+                const SizedBox(width: 3),
+                Text(
+                  user.area as String,
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                ),
+              ],
+            ),
+          ],
+
+          // Gear+ バッジ
+          if (user.isPremium == true) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Color(0xFFFFD700), Color(0xFFFFA500)]),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'Gear+',
+                style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+
+          // ヤエー人数（累計・本日）
+          if (stats != null) ...[
+            const SizedBox(height: 14),
+            _EncounterStatsRow(stats: stats!),
+          ],
+
+          // 一言コメント
+          if (user.comment != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '"${user.comment}"',
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 14,
+                  height: 1.6,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── ヤエー人数（累計・本日）─────────────────────────────
+class _EncounterStatsRow extends StatelessWidget {
+  final EncounterStats stats;
+  const _EncounterStatsRow({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _StatItem(label: '累計ヤエー', value: stats.totalPeople),
+          ),
+          Container(width: 1, height: 28, color: AppColors.border),
+          Expanded(
+            child: _StatItem(label: '今日のヤエー', value: stats.todayPeople),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatItem extends StatelessWidget {
+  final String label;
+  final int value;
+  const _StatItem({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          '$value人',
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── SNSリンクセクション ─────────────────────────────────
+class _SnsSection extends StatelessWidget {
+  final List snsLinks;
+  const _SnsSection({required this.snsLinks});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('SNS', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: snsLinks.map((link) {
+              final platform = link.platform as String;
+              final url = link.url as String;
+              final label = link.label as String;
+              final platformLabel = AppConstants.snsPlatforms
+                  .firstWhere((p) => p['key'] == platform, orElse: () => {'label': 'SNS'})['label']!;
+
+              return GestureDetector(
+                onTap: () async {
+                  final uri = Uri.tryParse(url);
+                  if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label.isNotEmpty ? label : platformLabel,
+                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.open_in_new, size: 12, color: AppColors.textMuted),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── 愛車一覧セクション ──────────────────────────────────
+class _VehiclesSection extends StatelessWidget {
+  final List<Vehicle> vehicles;
+  const _VehiclesSection({required this.vehicles});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '愛車 ${vehicles.length}台',
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 10),
+          ...vehicles.map((v) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _VehicleCard(vehicle: v),
+          )),
+        ],
+      ),
+    );
+  }
+}
+
+class _VehicleCard extends StatelessWidget {
+  final Vehicle vehicle;
+  const _VehicleCard({required this.vehicle});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => _VehicleDetailScreen(vehicle: vehicle)),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (vehicle.photos.isNotEmpty)
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                child: Stack(
+                  children: [
+                    SignedStorageImage(
+                      storedReference: vehicle.photos.first,
+                      height: 180,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      placeholder: Container(
+                        height: 100,
+                        color: AppColors.background,
+                        child: const Center(child: Icon(Icons.directions_car_outlined, color: AppColors.textMuted, size: 40)),
+                      ),
+                    ),
+                    if (vehicle.photos.length > 1)
+                      Positioned(
+                        top: 10,
+                        right: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.photo_library_outlined, size: 12, color: Colors.white),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${vehicle.photos.length}枚',
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                height: 80,
+                decoration: const BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: const Center(
+                  child: Icon(Icons.directions_car_outlined, color: AppColors.textMuted, size: 36),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    vehicle.displayName,
+                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                  if (vehicle.customContent != null && vehicle.customContent!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      vehicle.customContent!,
+                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── 愛車詳細画面（タップ時に写真ギャラリー・全情報を表示）───────────
+class _VehicleDetailScreen extends StatelessWidget {
+  final Vehicle vehicle;
+  const _VehicleDetailScreen({required this.vehicle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: YaheAppBar(title: vehicle.displayName, showBack: true),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: VehicleDetailCard(vehicle: vehicle),
+      ),
+    );
+  }
+}
+
+// ─── ベルボタン（未読バッジ付き）─────────────────────────────
+class _BellButton extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final countAsync = ref.watch(unreadNotifCountProvider);
+    final count = countAsync.value ?? 0;
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.notifications_outlined),
+          tooltip: 'お知らせ',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+          ).then((_) => ref.invalidate(unreadNotifCountProvider)),
+        ),
+        if (count > 0)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              child: Center(
+                child: Text(
+                  count > 99 ? '99+' : count.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ─── 共通アバターウィジェット（イニシャル or 実画像）────────────
+class _Avatar extends StatelessWidget {
+  final String? avatarUrl;
+  final String nickname;
+  final double radius;
+
+  const _Avatar({
+    required this.avatarUrl,
+    required this.nickname,
+    required this.radius,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (avatarUrl != null && avatarUrl!.isNotEmpty) {
+      return ClipOval(
+        child: SignedStorageImage(
+          storedReference: avatarUrl!,
+          defaultBucket: 'profile-photos',
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.cover,
+          placeholder: _initials(),
+        ),
+      );
+    }
+    return _initials();
+  }
+
+  Widget _initials() {
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: AppColors.primary.withOpacity(0.15),
+      child: Text(
+        nickname.isNotEmpty ? nickname.substring(0, 1).toUpperCase() : 'U',
+        style: TextStyle(
+          color: AppColors.primary,
+          fontSize: radius * 0.8,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
