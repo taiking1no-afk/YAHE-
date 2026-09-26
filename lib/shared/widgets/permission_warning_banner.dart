@@ -58,7 +58,8 @@ final _bluetoothAdapterStateProvider =
   return FlutterBluePlus.adapterState;
 });
 
-final permissionStatusProvider = FutureProvider.autoDispose<PermissionStatus>((ref) async {
+final permissionStatusProvider =
+    FutureProvider.autoDispose<PermissionStatus>((ref) async {
   ref.watch(_bluetoothAdapterStateProvider);
   return checkPermissions();
 });
@@ -87,13 +88,15 @@ Future<PermissionStatus> checkPermissions() async {
       final scan = await Permission.bluetoothScan.isGranted;
       final advertise = await Permission.bluetoothAdvertise.isGranted;
       permissionOk = scan && advertise;
-      debugPrint('[PERM-DEBUG] Android bluetoothScan=$scan advertise=$advertise');
+      debugPrint(
+          '[PERM-DEBUG] Android bluetoothScan=$scan advertise=$advertise');
     } else {
       // iOS: permission_handler の Permission.bluetooth は実際にBLEを動かしている
       // flutter_blue_plus の内部状態と食い違うことがあり、許可済みでも denied を
       // 返すことがあった。実際にBLEを動かしている flutter_blue_plus の
       // adapterState（unauthorized かどうか）で判定する方が実態に即している。
-      permissionOk = FlutterBluePlus.adapterStateNow != BluetoothAdapterState.unauthorized;
+      permissionOk =
+          FlutterBluePlus.adapterStateNow != BluetoothAdapterState.unauthorized;
     }
     // 許可があっても本体のBluetooth自体がオフだとすれ違い検知は動かないため、
     // 電源状態（adapterState）も合わせてチェックする。
@@ -114,8 +117,10 @@ Future<PermissionStatus> checkPermissions() async {
       // iOS: permission_handler の Permission.notification も Bluetooth と同様に
       // 実態と食い違うことがあったため、実際に通知許可をリクエストしている
       // FirebaseMessaging 自身の状態を見る方が実態に即している。
-      final settings = await FirebaseMessaging.instance.getNotificationSettings();
-      debugPrint('[PERM-DEBUG] FirebaseMessaging authorizationStatus = ${settings.authorizationStatus}');
+      final settings =
+          await FirebaseMessaging.instance.getNotificationSettings();
+      debugPrint(
+          '[PERM-DEBUG] FirebaseMessaging authorizationStatus = ${settings.authorizationStatus}');
       notif = settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
     }
@@ -123,7 +128,8 @@ Future<PermissionStatus> checkPermissions() async {
     debugPrint('[PERM-DEBUG] notification check error: $e');
   }
 
-  debugPrint('[PERM-DEBUG] 結果: locationAlways=$locationAlways bluetooth=$bt notification=$notif');
+  debugPrint(
+      '[PERM-DEBUG] 結果: locationAlways=$locationAlways bluetooth=$bt notification=$notif');
 
   return PermissionStatus(
     locationAlways: locationAlways,
@@ -162,7 +168,8 @@ class PermissionWarningBanner extends ConsumerWidget {
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 18),
+                    Icon(Icons.warning_amber_rounded,
+                        color: AppColors.warning, size: 18),
                     SizedBox(width: 6),
                     Text(
                       'すれ違い検知に必要な設定が不足しています',
@@ -176,18 +183,19 @@ class PermissionWarningBanner extends ConsumerWidget {
                 ),
                 const SizedBox(height: 6),
                 ...missing.map((m) => Padding(
-                  padding: const EdgeInsets.only(left: 24, bottom: 2),
-                  child: Row(
-                    children: [
-                      Icon(m.icon, size: 14, color: AppColors.error),
-                      const SizedBox(width: 6),
-                      Text(
-                        m.label,
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                      padding: const EdgeInsets.only(left: 24, bottom: 2),
+                      child: Row(
+                        children: [
+                          Icon(m.icon, size: 14, color: AppColors.error),
+                          const SizedBox(width: 6),
+                          Text(
+                            m.label,
+                            style: const TextStyle(
+                                color: AppColors.textSecondary, fontSize: 11),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                )),
+                    )),
                 const SizedBox(height: 4),
                 const Padding(
                   padding: EdgeInsets.only(left: 24),

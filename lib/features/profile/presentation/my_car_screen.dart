@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/focal_point.dart';
+import '../../../shared/widgets/focal_point_picker.dart';
 import '../../../shared/widgets/signed_storage_image.dart';
 import '../../../shared/widgets/yahe_app_bar.dart';
 import '../../auth/presentation/auth_provider.dart';
@@ -17,7 +19,8 @@ import '../../vehicle/data/vehicle_repository.dart';
 class MyCarScreen extends ConsumerWidget {
   const MyCarScreen({super.key});
 
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref, String vehicleId, String userId) async {
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref,
+      String vehicleId, String userId) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -25,21 +28,34 @@ class MyCarScreen extends ConsumerWidget {
         title: const Text('愛車を削除'),
         content: const Text('この愛車を削除しますか？\n（マッチ履歴は保持されます）'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('キャンセル')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('キャンセル')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('削除', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w700)),
+            child: const Text('削除',
+                style: TextStyle(
+                    color: AppColors.error, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
     );
     if (confirmed != true) return;
     final repo = ref.read(vehicleRepositoryProvider);
-    await repo.deleteVehicle(vehicleId);
-    ref.invalidate(allVehiclesProvider(userId));
+    try {
+      await repo.deleteVehicle(vehicleId);
+      ref.invalidate(allVehiclesProvider(userId));
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('削除に失敗しました: $e')),
+        );
+      }
+    }
   }
 
-  void _openRegisterFlow(BuildContext context, WidgetRef ref, String userId, {Vehicle? editVehicle}) {
+  void _openRegisterFlow(BuildContext context, WidgetRef ref, String userId,
+      {Vehicle? editVehicle}) {
     final notifier = ref.read(vehicleRegisterProvider.notifier);
     if (editVehicle != null) {
       notifier.loadForEdit(editVehicle);
@@ -71,7 +87,8 @@ class MyCarScreen extends ConsumerWidget {
     if (user == null) {
       return const Scaffold(
         backgroundColor: AppColors.background,
-        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+        body:
+            Center(child: CircularProgressIndicator(color: AppColors.primary)),
       );
     }
 
@@ -80,7 +97,7 @@ class MyCarScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: const YaheAppBar(title: 'マイカー', showBack: false),
+      appBar: const YaheAppBar(title: 'マイカー'),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -88,7 +105,8 @@ class MyCarScreen extends ConsumerWidget {
           children: [
             // 愛車セクション（プロフィール・統計は除外）
             vehiclesAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+              loading: () => const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary)),
               error: (e, _) => const Text('車両情報の読み込みに失敗しました'),
               data: (vehicles) => Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -97,33 +115,46 @@ class MyCarScreen extends ConsumerWidget {
                     children: [
                       const Text(
                         '登録済みの愛車',
-                        style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                           color: AppColors.primary.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
                           '${vehicles.length} / ${isPremium ? "∞" : AppConstants.freeVehicleLimit}',
-                          style: const TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w700),
+                          style: const TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   ...vehicles.map((v) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: GestureDetector(
-                      onTap: () => _openRegisterFlow(context, ref, user.userId, editVehicle: v),
-                      onLongPress: () => _confirmDelete(context, ref, v.vehicleId, user.userId),
-                      child: _VehicleCard(vehicle: v),
-                    ),
-                  )),
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _VehicleCard(
+                          vehicle: v,
+                          onTap: () => _openRegisterFlow(
+                              context, ref, user.userId,
+                              editVehicle: v),
+                          onLongPress: () => _confirmDelete(
+                              context, ref, v.vehicleId, user.userId),
+                          onDelete: () => _confirmDelete(
+                              context, ref, v.vehicleId, user.userId),
+                        ),
+                      )),
                   _AddVehicleButton(
-                    canAdd: isPremium || vehicles.length < AppConstants.freeVehicleLimit,
+                    canAdd: isPremium ||
+                        vehicles.length < AppConstants.freeVehicleLimit,
                     isPremium: isPremium,
                     currentCount: vehicles.length,
                     onTap: () => _openRegisterFlow(context, ref, user.userId),
@@ -159,7 +190,10 @@ class _ProfileCard extends StatelessWidget {
             backgroundColor: AppColors.primary.withOpacity(0.15),
             child: Text(
               (user.nickname as String? ?? 'U').substring(0, 1).toUpperCase(),
-              style: const TextStyle(color: AppColors.primary, fontSize: 22, fontWeight: FontWeight.w800),
+              style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800),
             ),
           ),
           const SizedBox(width: 16),
@@ -169,14 +203,19 @@ class _ProfileCard extends StatelessWidget {
               children: [
                 Text(
                   user.nickname as String? ?? '名無し',
-                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 17, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700),
                 ),
                 if (user.area != null)
                   Text(user.area as String,
-                      style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                      style: const TextStyle(
+                          color: AppColors.textMuted, fontSize: 13)),
                 if (user.comment != null)
                   Text('"${user.comment}"',
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12)),
               ],
             ),
           ),
@@ -184,16 +223,44 @@ class _ProfileCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (user.isPremium == true)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFFFFD700), Color(0xFFFFA500)]),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text('Gear+', style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.w800)),
-                ),
+                Builder(builder: (context) {
+                  final (label, gradient, textColor) = switch (user.effectivePlan) {
+                    'gear_r' => (
+                        'Gear R',
+                        const LinearGradient(
+                            colors: [Color(0xFF6C63FF), Color(0xFF8B7FFF)]),
+                        Colors.white,
+                      ),
+                    'gear_plus' => (
+                        'Gear+',
+                        const LinearGradient(
+                            colors: [Color(0xFFFFD700), Color(0xFFFFA500)]),
+                        Colors.black,
+                      ),
+                    _ => (
+                        'ピットイン',
+                        const LinearGradient(
+                            colors: [Color(0xFFFF8C00), Color(0xFFFFA94D)]),
+                        Colors.black,
+                      ),
+                  };
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      gradient: gradient,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(label,
+                        style: TextStyle(
+                            color: textColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800)),
+                  );
+                }),
               const SizedBox(height: 4),
-              const Text('編集', style: TextStyle(color: AppColors.primary, fontSize: 12)),
+              const Text('編集',
+                  style: TextStyle(color: AppColors.primary, fontSize: 12)),
             ],
           ),
         ],
@@ -204,7 +271,14 @@ class _ProfileCard extends StatelessWidget {
 
 class _VehicleCard extends StatelessWidget {
   final Vehicle vehicle;
-  const _VehicleCard({required this.vehicle});
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final VoidCallback onDelete;
+  const _VehicleCard(
+      {required this.vehicle,
+      required this.onTap,
+      required this.onLongPress,
+      required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -217,106 +291,210 @@ class _VehicleCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 写真
-          if (vehicle.photos.isNotEmpty)
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-              child: SignedStorageImage(
-                storedReference: vehicle.photos.first,
-                height: 180,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                placeholder: Container(
-                  height: 180,
-                  color: AppColors.background,
-                  child: const Center(child: Icon(Icons.broken_image, color: AppColors.textMuted)),
-                ),
-              ),
-            )
-          else
-            Container(
-              height: 100,
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-              child: const Center(
-                child: Icon(Icons.directions_car_outlined, color: AppColors.textMuted, size: 40),
-              ),
-            ),
-
-          Padding(
-            padding: const EdgeInsets.all(16),
+          // 基本情報タップで編集フローへ（カスタム詳細ボタンとは別ジェスチャー領域にする）
+          GestureDetector(
+            onTap: onTap,
+            onLongPress: onLongPress,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    // 車/バイクバッジ
-                    Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        vehicle.vehicleType == VehicleType.bike ? '🏍 バイク' : '🚗 車',
-                        style: const TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        vehicle.displayName,
-                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.edit_outlined, size: 12, color: AppColors.primary),
-                          SizedBox(width: 4),
-                          Text('編集', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                if (vehicle.deliveryDate != null) ...[
-                  const SizedBox(height: 8),
-                  Row(
+                // 写真
+                if (vehicle.photos.isNotEmpty)
+                  Stack(
                     children: [
-                      const Icon(Icons.calendar_today_outlined, size: 13, color: AppColors.textMuted),
-                      const SizedBox(width: 4),
-                      Text(
-                        '納車日：${DateFormat('yyyy年M月d日').format(vehicle.deliveryDate!)}',
-                        style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(16)),
+                        child: SignedStorageImage(
+                          storedReference: vehicle.photos.first,
+                          height: 180,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          alignment: focalAlignment(
+                              vehicle.photoFocalX, vehicle.photoFocalY),
+                          placeholder: Container(
+                            height: 180,
+                            color: AppColors.background,
+                            child: const Center(
+                                child: Icon(Icons.broken_image,
+                                    color: AppColors.textMuted)),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: _FocalAdjustButton(vehicle: vehicle),
                       ),
                     ],
+                  )
+                else
+                  Container(
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(16)),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.directions_car_outlined,
+                          color: AppColors.textMuted, size: 40),
+                    ),
                   ),
-                ],
-                if (vehicle.customContent != null && vehicle.customContent!.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  const Divider(height: 1, color: AppColors.border),
-                  const SizedBox(height: 10),
-                  Text(
-                    vehicle.customContent!,
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.6),
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
+
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          // 車/バイクバッジ
+                          Container(
+                            margin: const EdgeInsets.only(right: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              vehicle.vehicleType == VehicleType.bike
+                                  ? '🏍 バイク'
+                                  : '🚗 車',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              vehicle.displayName,
+                              style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                  color: AppColors.primary.withOpacity(0.3)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.edit_outlined,
+                                    size: 12, color: AppColors.primary),
+                                SizedBox(width: 4),
+                                Text('編集',
+                                    style: TextStyle(
+                                        color: AppColors.primary,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (vehicle.deliveryDate != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.calendar_today_outlined,
+                                size: 13, color: AppColors.textMuted),
+                            const SizedBox(width: 4),
+                            Text(
+                              '納車日：${DateFormat('yyyy年M月d日').format(vehicle.deliveryDate!)}',
+                              style: const TextStyle(
+                                  color: AppColors.textMuted, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (vehicle.customContent != null &&
+                          vehicle.customContent!.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        const Divider(height: 1, color: AppColors.border),
+                        const SizedBox(height: 10),
+                        Text(
+                          vehicle.customContent!,
+                          style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 13,
+                              height: 1.6),
+                          maxLines: 4,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
                   ),
-                ],
+                ),
               ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onDelete,
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                icon: const Icon(Icons.delete_outline, size: 16),
+                label: const Text('この愛車を削除', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _FocalAdjustButton extends ConsumerWidget {
+  final Vehicle vehicle;
+  const _FocalAdjustButton({required this.vehicle});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      onTap: () async {
+        final point = await pickFocalPoint(
+          context,
+          storedReference: vehicle.photos.first,
+          bucket: 'vehicle-photos',
+          initialX: vehicle.photoFocalX,
+          initialY: vehicle.photoFocalY,
+        );
+        if (point == null) return;
+        try {
+          await VehicleRepository()
+              .updatePhotoFocal(vehicle.vehicleId, point.dx, point.dy);
+          ref.invalidate(allVehiclesProvider(vehicle.userId));
+          if (context.mounted) {
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(content: Text('表示位置を更新しました')));
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(content: Text('更新に失敗しました')));
+          }
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: const BoxDecoration(
+          color: Colors.black45,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.center_focus_strong,
+            color: Colors.white, size: 16),
       ),
     );
   }
@@ -348,7 +526,8 @@ class _AddVehicleButton extends StatelessWidget {
         ),
         child: Column(
           children: [
-            const Icon(Icons.lock_outline, color: AppColors.textMuted, size: 24),
+            const Icon(Icons.lock_outline,
+                color: AppColors.textMuted, size: 24),
             const SizedBox(height: 6),
             Text(
               '無料プランは${AppConstants.freeVehicleLimit}台まで',
@@ -377,14 +556,17 @@ class _AddVehicleButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
+          border:
+              Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
         ),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.add, color: AppColors.primary, size: 20),
             SizedBox(width: 8),
-            Text('愛車を追加登録', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700)),
+            Text('愛車を追加登録',
+                style: TextStyle(
+                    color: AppColors.primary, fontWeight: FontWeight.w700)),
           ],
         ),
       ),
@@ -408,7 +590,11 @@ class _StatsSection extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('統計', style: TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w600)),
+          const Text('統計',
+              style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
           const SizedBox(height: 16),
           const Row(
             children: [
@@ -427,7 +613,8 @@ class _StatItem extends StatelessWidget {
   final String label;
   final String value;
   final IconData icon;
-  const _StatItem({required this.label, required this.value, required this.icon});
+  const _StatItem(
+      {required this.label, required this.value, required this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -436,8 +623,13 @@ class _StatItem extends StatelessWidget {
         children: [
           Icon(icon, color: AppColors.primary, size: 24),
           const SizedBox(height: 6),
-          Text(value, style: const TextStyle(color: AppColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w800)),
-          Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+          Text(value,
+              style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800)),
+          Text(label,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
         ],
       ),
     );
@@ -451,7 +643,8 @@ class _VehicleRegisterFlow extends ConsumerStatefulWidget {
   const _VehicleRegisterFlow({required this.userId, required this.onComplete});
 
   @override
-  ConsumerState<_VehicleRegisterFlow> createState() => _VehicleRegisterFlowState();
+  ConsumerState<_VehicleRegisterFlow> createState() =>
+      _VehicleRegisterFlowState();
 }
 
 class _VehicleRegisterFlowState extends ConsumerState<_VehicleRegisterFlow> {

@@ -1,28 +1,33 @@
 import 'package:flutter/material.dart';
+import 'report_dialog.dart';
 import 'signed_storage_image.dart';
 
 /// 愛車写真をピンチズームで全画面表示するビューア
 class VehiclePhotoViewer extends StatefulWidget {
   final List<String> photos;
   final int initialIndex;
+  final String? ownerUserId;
 
   const VehiclePhotoViewer({
     super.key,
     required this.photos,
     this.initialIndex = 0,
+    this.ownerUserId,
   });
 
   static Future<void> show(
     BuildContext context, {
     required List<String> photos,
     int initialIndex = 0,
+    String? ownerUserId,
   }) {
     if (photos.isEmpty) return Future.value();
     return Navigator.push(
       context,
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => VehiclePhotoViewer(photos: photos, initialIndex: initialIndex),
+        builder: (_) => VehiclePhotoViewer(
+            photos: photos, initialIndex: initialIndex, ownerUserId: ownerUserId),
       ),
     );
   }
@@ -61,6 +66,15 @@ class _VehiclePhotoViewerState extends State<VehiclePhotoViewer> {
                 style: const TextStyle(color: Colors.white, fontSize: 15),
               )
             : null,
+        actions: [
+          if (widget.ownerUserId != null)
+            IconButton(
+              icon: const Icon(Icons.flag_outlined, color: Colors.white),
+              tooltip: '通報',
+              onPressed: () => showReportDialog(context,
+                  targetType: 'photo', targetId: widget.ownerUserId),
+            ),
+        ],
       ),
       body: PageView.builder(
         controller: _controller,

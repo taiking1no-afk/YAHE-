@@ -76,11 +76,13 @@ class SameModelEffectOverlayState extends State<SameModelEffectOverlay>
                   child: Transform.scale(
                     scale: _scale.value,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 22, vertical: 12),
                       decoration: BoxDecoration(
                         color: AppColors.surfaceCard,
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: const Color(0xFFFFC107), width: 2),
+                        border: Border.all(
+                            color: const Color(0xFFFFC107), width: 2),
                         boxShadow: [
                           BoxShadow(
                             color: const Color(0xFFFFC107).withOpacity(0.6),

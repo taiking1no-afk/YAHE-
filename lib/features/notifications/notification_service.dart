@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -55,6 +57,11 @@ class NotificationService {
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
 
+  // 実機デバッグ用: Android のネイティブ通知有効状態・チャンネル一覧を確認するための参照
+  AndroidFlutterLocalNotificationsPlugin? get androidPlugin =>
+      _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+
   // ---- 初期化 ------------------------------------------------
   Future<void> initialize() async {
     if (_initialized) return;
@@ -64,7 +71,8 @@ class NotificationService {
 
     // 許可のプロンプト自体は requestPermission() 側で明示的に行う。
     // ここで勝手に許可要求が出ないようにする。
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
@@ -77,8 +85,8 @@ class NotificationService {
     );
 
     // Android チャンネル登録
-    final androidPlugin = _plugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.createNotificationChannel(_Channel.encounter);
     await androidPlugin?.createNotificationChannel(_Channel.motivation);
     await androidPlugin?.createNotificationChannel(_Channel.like);
@@ -106,15 +114,26 @@ class NotificationService {
       badge: true,
       sound: true,
     );
-    final granted = settings.authorizationStatus == AuthorizationStatus.authorized ||
-        settings.authorizationStatus == AuthorizationStatus.provisional;
+    final iosGranted =
+        settings.authorizationStatus == AuthorizationStatus.authorized ||
+            settings.authorizationStatus == AuthorizationStatus.provisional;
 
-    // Android 13+
-    await _plugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+    // Android 13+: 戻り値を無視していたため、Androidで拒否されてもiOS側の
+    // 結果だけでgranted=trueになり得た。両方の結果を反映する。
+    final androidResult = await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
 
-    return granted;
+    // Android以外(iOS)ではandroidResultはnullになるため、その場合はiOSの結果のみで判定する。
+    return androidResult == null ? iosGranted : (iosGranted && androidResult);
+  }
+
+  // ---- 現在の通知許可状態を確認（プロンプトは出さない） -----------
+  Future<bool> hasPermission() async {
+    final settings = await FirebaseMessaging.instance.getNotificationSettings();
+    return settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
   }
 
   // ---- FCM トークン取得 ------------------------------------
@@ -123,14 +142,22 @@ class NotificationService {
   }
 
   // ---- FCM トークンを Supabase に保存 ----------------------
+  StreamSubscription<String>? _tokenRefreshSub;
+
   Future<void> saveFcmTokenToSupabase(String userId) async {
     try {
       final token = await getFcmToken();
       if (token == null) return;
       await UserRepository().saveFcmToken(userId, token);
 
-      // トークン更新時も再保存
-      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      // このメソッドは signedIn / tokenRefreshed のたびに呼ばれる。
+      // 購読しっぱなしで呼ぶたびに追加すると、ログインのたびリスナーが
+      // 増殖し、しかも古いリスナーは古いuserIdをクローズャで捕まえたまま
+      // 別アカウントの行に書き込み続けてしまう。毎回、直前の購読を解除
+      // してから最新のuserIdで張り直す。
+      unawaited(_tokenRefreshSub?.cancel());
+      _tokenRefreshSub =
+          FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
         try {
           await UserRepository().saveFcmToken(userId, newToken);
         } catch (_) {}
@@ -246,8 +273,17 @@ class NotificationService {
     int quietEndHour = 6,
   }) async {
     // 既存のモチベーション通知をすべてキャンセル
+    // flutter_local_notifications の一部バージョン/端末では、スケジュール0件の
+    // 状態で cancel() を呼ぶとネイティブ側で例外を投げることがある
+    // （"Missing type parameter" 等）。1件の失敗で全体（呼び出し元のオンボー
+    // ディング完了処理等）が止まらないよう、個別に握り潰して続行する。
     for (int i = 0; i < 100; i++) {
-      await _plugin.cancel(_NotifId.motivationBase + i);
+      try {
+        await _plugin.cancel(_NotifId.motivationBase + i);
+      } catch (e) {
+        debugPrint(
+            '[NotificationService] cancel(${_NotifId.motivationBase + i}) error: $e');
+      }
     }
 
     final messages = _motivationMessages;
@@ -268,44 +304,55 @@ class NotificationService {
 
         // 過去 or 深夜帯はスキップ
         if (scheduledTime.isBefore(now)) continue;
-        if (quietEnabled && _isQuietHour(scheduledTime.hour, quietStartHour, quietEndHour)) continue;
+        if (quietEnabled &&
+            _isQuietHour(scheduledTime.hour, quietStartHour, quietEndHour))
+          continue;
 
-        final msg = messages[(dayOffset * _timeSlots.length + idOffset) % messages.length];
+        final msg = messages[
+            (dayOffset * _timeSlots.length + idOffset) % messages.length];
 
-        await _plugin.zonedSchedule(
-          _NotifId.motivationBase + idOffset,
-          msg.title,
-          msg.body,
-          scheduledTime,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              'yahe_motivation',
-              'おでかけ通知',
-              importance: Importance.defaultImportance,
-              icon: '@mipmap/ic_launcher',
-              styleInformation: BigTextStyleInformation(msg.body),
+        try {
+          await _plugin.zonedSchedule(
+            _NotifId.motivationBase + idOffset,
+            msg.title,
+            msg.body,
+            scheduledTime,
+            NotificationDetails(
+              android: AndroidNotificationDetails(
+                'yahe_motivation',
+                'おでかけ通知',
+                importance: Importance.defaultImportance,
+                icon: '@mipmap/ic_launcher',
+                styleInformation: BigTextStyleInformation(msg.body),
+              ),
+              iOS: const DarwinNotificationDetails(
+                presentAlert: true,
+                presentSound: true,
+              ),
             ),
-            iOS: const DarwinNotificationDetails(
-              presentAlert: true,
-              presentSound: true,
-            ),
-          ),
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-        );
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          );
+        } catch (e) {
+          debugPrint('[NotificationService] zonedSchedule error: $e');
+        }
 
         idOffset++;
         if (idOffset >= 100) return;
       }
     }
 
-    debugPrint('[NotificationService] scheduled $idOffset motivation notifications');
+    debugPrint(
+        '[NotificationService] scheduled $idOffset motivation notifications');
   }
 
   Future<void> cancelAllMotivationNotifications() async {
     for (int i = 0; i < 100; i++) {
-      await _plugin.cancel(_NotifId.motivationBase + i);
+      try {
+        await _plugin.cancel(_NotifId.motivationBase + i);
+      } catch (e) {
+        debugPrint(
+            '[NotificationService] cancel(${_NotifId.motivationBase + i}) error: $e');
+      }
     }
   }
 
@@ -334,7 +381,8 @@ class NotificationService {
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
         ),
-        iOS: const DarwinNotificationDetails(presentAlert: true, presentSound: true),
+        iOS: const DarwinNotificationDetails(
+            presentAlert: true, presentSound: true),
       ),
       payload: type,
     );
@@ -347,12 +395,15 @@ class NotificationService {
 
     final payload = response.payload ?? '';
     // payload に応じてタブを切り替える
+    // タブは「YAHE/いいね/マッチ」がまとまり(index 0)になっているため、
+    // 外側タブを0にした上でまとまり内のサブタブを指定する
+    container.read(selectedTabProvider.notifier).state = 0;
     if (payload.contains('match')) {
-      container.read(selectedTabProvider.notifier).state = 2; // マッチタブ
+      container.read(socialHubSubTabProvider.notifier).state = 2; // マッチ
     } else if (payload.contains('like')) {
-      container.read(selectedTabProvider.notifier).state = 1; // いいねタブ
+      container.read(socialHubSubTabProvider.notifier).state = 1; // いいね
     } else {
-      container.read(selectedTabProvider.notifier).state = 0; // YAHEタブ
+      container.read(socialHubSubTabProvider.notifier).state = 0; // YAHE
     }
     container.read(pendingNavProvider.notifier).state = PendingNav.none;
   }
@@ -368,10 +419,10 @@ class NotificationService {
 
   // 通知を送る時間帯スロット
   static const _timeSlots = [
-    _TimeSlot(7, 30),   // 朝の出発時間
-    _TimeSlot(10, 0),   // 午前ドライブタイム
-    _TimeSlot(14, 0),   // 昼過ぎドライブ
-    _TimeSlot(18, 30),  // 仕事帰りドライブ
+    _TimeSlot(7, 30), // 朝の出発時間
+    _TimeSlot(10, 0), // 午前ドライブタイム
+    _TimeSlot(14, 0), // 昼過ぎドライブ
+    _TimeSlot(18, 30), // 仕事帰りドライブ
   ];
 
   // モチベーションメッセージ一覧

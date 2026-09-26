@@ -40,6 +40,17 @@ flutterfire configure
 - `android/app/src/main/AndroidManifest.xml` に AdMob App ID を追記
 - `ios/Runner/Info.plist` に AdMob App ID を追記
 
+### 7. 本番ビルド（重要）
+`dart_defines.json` は Gradle/Xcode に自動で紐付かない。`--dart-define-from-file` を付けずに
+`flutter build` すると SUPABASE_URL 等が未注入のままとなり、Release ビルドで起動処理が
+完了しなくなる（iOSで一度発生した既知の不具合）。**本番ビルドは以下のスクリプトを必ず使う**こと。
+
+```bash
+./scripts/build_release_ios.sh
+./scripts/build_release_android.sh          # APK（実機配布用）
+./scripts/build_release_android.sh appbundle # AAB（Google Play提出用）
+```
+
 ## プロジェクト構造
 
 ```

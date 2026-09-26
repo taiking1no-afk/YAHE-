@@ -86,7 +86,8 @@ class _BottomBannerAdState extends State<BottomBannerAd> {
     if (!AdService.canShowAds) return;
     // アダプティブバナーでデバイス幅に合わせる
     final width = MediaQuery.of(context).size.width.truncate();
-    final size = await AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(width);
+    final size =
+        await AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(width);
     if (size == null || !mounted) return;
 
     final ad = BannerAd(

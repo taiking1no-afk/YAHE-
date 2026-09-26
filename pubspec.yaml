@@ -1,7 +1,7 @@
 name: surf
 description: すれ違いマッチングアプリ - 改造車・スポーツカーオーナー向け
 publish_to: 'none'
-version: 1.0.0+6
+version: 1.0.1+84
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -33,7 +33,8 @@ dependencies:
   firebase_messaging: ^15.1.0
 
   # サブスク決済 (RevenueCat)
-  purchases_flutter: ^8.0.0
+  # Google Play Billing Library 8.0.0+ 要件対応 (2026-08-31 期限)
+  purchases_flutter: ^10.4.3
 
   # 広告 (AdMob) + iOS ATT
   google_mobile_ads: ^5.1.0
@@ -41,6 +42,7 @@ dependencies:
 
   # 画像関連
   image_picker: ^1.1.2
+  image_cropper: ^8.0.2
   cached_network_image: ^3.3.1
   # アップロード前のEXIF(位置情報)除去・リサイズ用
   image: ^4.2.0
@@ -48,6 +50,7 @@ dependencies:
   # SNSログイン
   google_sign_in: ^6.2.1
   sign_in_with_apple: ^6.1.1
+  crypto: ^3.0.3
 
   # UI補助
   shimmer: ^3.0.0
@@ -55,14 +58,20 @@ dependencies:
   url_launcher: ^6.3.0
   intl: ^0.20.2
   permission_handler: ^11.3.1
+  # チャット一覧のスワイプ操作（削除・ピン留め・ミュート）
+  flutter_slidable: ^3.1.1
+  # 掲示板カレンダー表示
+  table_calendar: ^3.1.2
 
   # 地図 (愛車ガード)
-  flutter_map: ^7.0.2
+  flutter_map: ^8.3.2
   latlong2: ^0.9.1
+  # 地名検索（掲示板の集合場所検索）
+  http: ^1.2.0
 
   # ローカル通知・スケジュール通知
-  flutter_local_notifications: ^18.0.1
-  timezone: ^0.9.4
+  flutter_local_notifications: ^19.5.0
+  timezone: ^0.10.0
 
   # バックグラウンドサービス（BLE常時検知）
   flutter_background_service: ^5.0.5
@@ -73,6 +82,13 @@ dependencies:
   # フォーム・バリデーション
   flutter_hooks: ^0.20.5
   hooks_riverpod: ^2.5.2
+
+  # SNS共有（すれ違い・マッチのシェアカード画像をOSの共有シートへ渡す）
+  share_plus: ^10.1.2
+  path_provider: ^2.1.4
+
+  # Gear R インサイトアクティビティのグラフ表示
+  fl_chart: ^0.69.2
 
 dev_dependencies:
   flutter_test:

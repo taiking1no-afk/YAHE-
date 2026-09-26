@@ -42,7 +42,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _Page(
       emoji: '⚡',
       title: 'すれ違いを検知',
-      body: 'アプリを起動したまま走ると\nBluetooth + GPSで近くのYAHEユーザーを検知。\nすれ違い時刻が記録されます（位置情報は近傍判定のために最新位置のみを一時利用し、他人には閲覧できません）。',
+      body:
+          'アプリを起動したまま走ると\nBluetooth + GPSで近くのYAHEユーザーを検知。\nすれ違い時刻が記録されます（位置情報は近傍判定のために最新位置のみを一時利用し、他人には閲覧できません）。',
     ),
     _Page(
       emoji: '❤️',
@@ -146,28 +147,45 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _finish() async {
     if (!mounted) return;
 
+    // 権限周りのプラグインが端末依存の例外を投げても、チュートリアルが
+    // 完了不能（無限ループ）にならないよう全体を保護する。
+    try {
+      await _runPermissionSteps();
+    } catch (e) {
+      debugPrint('[Onboarding] permission flow error: $e');
+    }
+
+    if (!mounted) return;
+    await markOnboardingDone();
+    widget.onFinish();
+  }
+
+  Future<void> _runPermissionSteps() async {
     // ── STEP 1: 位置情報 ──
     await _showPermissionStep(
       emoji: '📍',
       title: '位置情報の許可',
-      body: 'すれ違いを検知するために位置情報が必要です。\n\n'
-          'iOSの場合「常に許可」を選んでください。\n'
-          '「アプリ使用中のみ」だとバックグラウンドで検知できません。',
-      buttonLabel: '位置情報を許可する',
+      body: 'すれ違いを検知するために位置情報を使用します。\n\n'
+          'この機能は、アプリを閉じているときや使用していないときも、'
+          'バックグラウンドで位置情報を取得して近くのユーザーとの'
+          'すれ違いを記録します。\n\n'
+          'iOSの場合は「常に許可」を、Androidの場合は「常に許可」'
+          '（バックグラウンドでの位置情報の使用を許可）を選択してください。',
+      buttonLabel: '続ける',
       onRequest: () async {
         final perm = await Geolocator.requestPermission();
         if (perm == LocationPermission.denied ||
             perm == LocationPermission.deniedForever) {
           return false;
         }
-        if (defaultTargetPlatform == TargetPlatform.iOS &&
-            perm != LocationPermission.always) {
-          if (!mounted) return false;
-          await _showGoToSettingsDialog(
-            '「常に許可」に変更してください',
-            'すれ違いをバックグラウンドで検知するには、\n設定 → YAHE → 位置情報 →「常に」に変更してください。',
-          );
-        }
+        // iOSで「使用中のみ」が許可された場合、以前はここで「常に許可に
+        // 変更してください」という追加のダイアログを表示してオンボーディングの
+        // 続行をブロックしていた。ネイティブの許可ダイアログに答えた直後に
+        // さらに別のダイアログで足止めされる形になり、App Store審査で
+        // 「続けるを押しても何も起きない（先に進めない）」という不具合として
+        // 却下された（Guideline 2.1(a)）。「常に許可」の案内は本文に既に
+        // 含めてあり、未設定の場合はホーム画面のPermissionWarningBannerが
+        // 後から非ブロッキングでリマインドするため、ここでは先に進める。
         return true;
       },
     );
@@ -178,7 +196,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       emoji: '📡',
       title: 'Bluetoothの許可',
       body: 'すれ違ったユーザーを正確に検知するために\nBluetoothが必要です。',
-      buttonLabel: 'Bluetoothを許可する',
+      buttonLabel: '続ける',
       onRequest: () async {
         if (defaultTargetPlatform == TargetPlatform.android) {
           final scan = await Permission.bluetoothScan.request();
@@ -204,7 +222,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: 'すれ違い通知やマッチ通知を受け取れます。\n\n'
           'ドライブに出たくなる定期通知もお届けします。\n'
           'あとから「設定」でいつでも変更できます。',
-      buttonLabel: '通知を許可する',
+      buttonLabel: '続ける',
       onRequest: () async {
         return await NotificationService().requestPermission();
       },
@@ -239,9 +257,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       );
       if (!mounted) return;
     }
-
-    await markOnboardingDone();
-    widget.onFinish();
   }
 
   Future<bool> _showPermissionStep({
@@ -251,6 +266,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     required String buttonLabel,
     required Future<bool> Function() onRequest,
   }) async {
+    // 既に許可済みの権限は onRequest() が即座に返るため、連打すると
+    // 1回目の Navigator.pop でダイアログが閉じた後、2回目の pop が
+    // ダイアログではなく OnboardingScreen 自体を pop してしまっていた。
+    // このダイアログ呼び出し1回に対して一度しか処理しないようにガードする。
+    var handled = false;
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -271,14 +291,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             height: 1.7,
           ),
         ),
+        // Apple審査ガイドライン 5.1.1(iv): カスタムの事前案内画面を出した場合、
+        // ユーザーは必ずOSの許可ダイアログへ進む必要がある。「後で」等でOSダイアログ
+        // 自体をスキップできる導線は不可のため、ボタンは1つ（続ける）のみにする。
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('後で', style: TextStyle(color: AppColors.textMuted)),
-          ),
           ElevatedButton(
             onPressed: () async {
-              final granted = await onRequest();
+              if (handled) return;
+              handled = true;
+              // onRequest() が例外を投げる、あるいは端末依存の問題で
+              // 応答が返らないまま固まると、Navigator.pop まで到達せず
+              // ダイアログが「続ける」を押しても消えないまま残っていた。
+              // 例外を拾い、一定時間で応答が無ければ「未許可」扱いで
+              // 必ずダイアログを閉じて先へ進めるようにする。
+              var granted = false;
+              try {
+                granted = await onRequest().timeout(
+                  const Duration(seconds: 15),
+                  onTimeout: () => false,
+                );
+              } catch (e) {
+                debugPrint('[Onboarding] onRequest error: $e');
+              }
               if (context.mounted) Navigator.pop(context, granted);
             },
             child: Text(buttonLabel),
@@ -287,33 +321,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ),
     );
     return result ?? false;
-  }
-
-  Future<void> _showGoToSettingsDialog(String title, String body) async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(title),
-        content: Text(
-          body,
-          style: const TextStyle(color: AppColors.textSecondary, height: 1.6),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('あとで変更する', style: TextStyle(color: AppColors.textMuted)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              openAppSettings();
-            },
-            child: const Text('設定を開く'),
-          ),
-        ],
-      ),
-    );
   }
 }
 

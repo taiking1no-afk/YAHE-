@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app.dart';
 import 'core/encounter/encounter_dedupe.dart';
@@ -28,9 +29,13 @@ void main() async {
   ));
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  // ① Supabase（認証フローに必須 → runApp 前に完了）
-  await SupabaseConfig.initialize();
-  await EncounterTestMode.load();
+  // ① Supabase初期化は runApp をブロックしない。以前はここで await していたため、
+  // ネットワークが遅い端末では「ネイティブの起動画面が長く固まる」体感になっていた。
+  // 初期化はここで開始だけしておき、実際に Supabase.instance を使う側
+  // （AuthNotifier）が SupabaseConfig.ensureInitialized() を待つ構成にすることで、
+  // runApp後すぐに自前のスプラッシュ画面（ローディング表示）に切り替わるようにする。
+  unawaited(_initSupabase());
+  unawaited(EncounterTestMode.load());
 
   // RevenueCat はネットワーク待ちが起きると起動が数秒遅れる原因になるため
   // runApp をブロックしない。RevenueCatConfig側の各メソッドが初期化完了を
@@ -42,7 +47,8 @@ void main() async {
   NotificationService().setContainer(container);
 
   // 先に runApp してFlutterスプラッシュを表示
-  runApp(UncontrolledProviderScope(container: container, child: const SurfApp()));
+  runApp(
+      UncontrolledProviderScope(container: container, child: const SurfApp()));
 
   // ② Firebase / BackgroundService は認証不要なので runApp 後に並列初期化
   await Future.wait([
@@ -52,6 +58,19 @@ void main() async {
 
   // UI表示後にバックグラウンドで非クリティカルな初期化
   _initInBackground();
+}
+
+Future<void> _initSupabase() async {
+  try {
+    await SupabaseConfig.ensureInitialized().timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        debugPrint('Supabase 初期化タイムアウト → 未ログイン扱いで起動を継続');
+      },
+    );
+  } catch (e) {
+    debugPrint('Supabase 初期化エラー: $e');
+  }
 }
 
 Future<void> _initFirebase() async {
@@ -87,6 +106,12 @@ Future<void> _initBackgroundService() async {
 }
 
 Future<void> _initInBackground() async {
+  try {
+    await initializeDateFormatting('ja_JP');
+  } catch (e) {
+    debugPrint('日付ロケール初期化エラー: $e');
+  }
+
   try {
     await AdService().initialize();
   } catch (e) {

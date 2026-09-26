@@ -20,6 +20,9 @@ class Vehicle {
   final DateTime? deliveryDate;
   final bool isActive;
   final DateTime createdAt;
+  final String? ownerPassionComment;
+  final double photoFocalX; // 一覧/サムネイル表示時のトリミング焦点(0.0〜1.0、デフォルト0.5=中央)
+  final double photoFocalY;
 
   const Vehicle({
     required this.vehicleId,
@@ -34,6 +37,9 @@ class Vehicle {
     this.deliveryDate,
     required this.isActive,
     required this.createdAt,
+    this.ownerPassionComment,
+    this.photoFocalX = 0.5,
+    this.photoFocalY = 0.5,
   });
 
   factory Vehicle.fromJson(Map<String, dynamic> json) => Vehicle(
@@ -51,6 +57,9 @@ class Vehicle {
             : null,
         isActive: json['is_active'] as bool? ?? true,
         createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
+        ownerPassionComment: json['owner_passion_comment'] as String?,
+        photoFocalX: (json['photo_focal_x'] as num?)?.toDouble() ?? 0.5,
+        photoFocalY: (json['photo_focal_y'] as num?)?.toDouble() ?? 0.5,
       );
 
   String get displayName => '$maker $model${year != null ? ' ($year)' : ''}';

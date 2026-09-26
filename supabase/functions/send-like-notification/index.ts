@@ -75,10 +75,11 @@ serve(async (req) => {
     const sinceIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const { data: likeRows, error: likeErr } = await supabaseAuth
       .from('likes')
-      .select('like_id')
+      .select('like_id, boost_type')
       .eq('from_user_id', callerUserId)
       .eq('to_user_id', to_user_id)
       .gt('created_at', sinceIso)
+      .order('created_at', { ascending: false })
       .limit(1);
 
     if (likeErr || !likeRows || likeRows.length === 0) {
@@ -87,6 +88,8 @@ serve(async (req) => {
         headers: corsHeaders(),
       });
     }
+
+    const boostType = likeRows[0]?.boost_type as string | null;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -103,9 +106,12 @@ serve(async (req) => {
     }
 
     const accessTokenFcm = await getFirebaseAccessToken();
-    const result = await sendFcmPush(tokenRow.fcm_token, accessTokenFcm, Boolean(is_matched)).catch(
-      (e) => ({ error: String(e) }),
-    );
+    const result = await sendFcmPush(
+      tokenRow.fcm_token,
+      accessTokenFcm,
+      Boolean(is_matched),
+      boostType,
+    ).catch((e) => ({ error: String(e) }));
 
     return new Response(JSON.stringify({ ok: true, result }), {
       headers: corsHeaders(),
@@ -122,10 +128,19 @@ serve(async (req) => {
 const FIREBASE_PROJECT_ID = Deno.env.get('FIREBASE_PROJECT_ID') ?? '';
 const FIREBASE_SERVICE_ACCOUNT_JSON = Deno.env.get('FIREBASE_SERVICE_ACCOUNT_JSON') ?? '{}';
 
-async function sendFcmPush(token: string, accessToken: string, isMatched: boolean) {
+async function sendFcmPush(
+  token: string,
+  accessToken: string,
+  isMatched: boolean,
+  boostType: string | null,
+) {
   const notification = isMatched
     ? { title: '🎉 マッチしました！', body: 'お互いにいいねが届きました。SNSで繋がってみよう。' }
-    : { title: '💛 いいねが届きました', body: 'どんな人か確認してみよう 👀' };
+    : boostType === 'geki_shibu'
+      ? { title: '🌟 激渋！が届きました', body: '特別ないいねです。どんな人か確認してみよう 👀' }
+      : boostType === 'shibu'
+        ? { title: '🔥 渋！が届きました', body: '特別ないいねです。どんな人か確認してみよう 👀' }
+        : { title: '💛 いいねが届きました', body: 'どんな人か確認してみよう 👀' };
 
   const res = await fetch(
     `https://fcm.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/messages:send`,
@@ -139,7 +154,10 @@ async function sendFcmPush(token: string, accessToken: string, isMatched: boolea
         message: {
           token,
           notification,
-          data: { type: isMatched ? 'match' : 'like' },
+          data: {
+            type: isMatched ? 'match' : 'like',
+            ...(boostType ? { boost_type: boostType } : {}),
+          },
           apns: {
             payload: {
               aps: { sound: 'default', badge: 1 },

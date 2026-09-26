@@ -21,6 +21,7 @@ class VehicleRegisterState {
   // 編集時は既存データを保持
   final String? editingVehicleId;
   final List<String> existingPhotoUrls;
+  final String? ownerPassionComment;
 
   const VehicleRegisterState({
     this.vehicleType = VehicleType.car,
@@ -34,35 +35,47 @@ class VehicleRegisterState {
     this.error,
     this.editingVehicleId,
     this.existingPhotoUrls = const [],
+    this.ownerPassionComment,
   });
 
+  // maker/model/year/deliveryDate は「null を渡して値をクリアする」操作が
+  // 必要なフィールド（車種切替時のメーカーリセット、納車日クリアの×ボタン等）。
+  // 通常の `x ?? this.x` パターンだと null を渡しても既存値のままになり、
+  // 明示的にクリアする手段が無くなってしまうため、この4つだけ
+  // 「未指定(_unset)」と「明示的なnull」を区別するsentinel方式にする。
   VehicleRegisterState copyWith({
     VehicleType? vehicleType,
-    String? maker,
-    String? model,
-    int? year,
+    Object? maker = _unset,
+    Object? model = _unset,
+    Object? year = _unset,
     String? customContent,
     List<File>? photos,
-    DateTime? deliveryDate,
+    Object? deliveryDate = _unset,
     bool? isLoading,
     String? error,
     String? editingVehicleId,
     List<String>? existingPhotoUrls,
+    String? ownerPassionComment,
   }) =>
       VehicleRegisterState(
         vehicleType: vehicleType ?? this.vehicleType,
-        maker: maker ?? this.maker,
-        model: model ?? this.model,
-        year: year ?? this.year,
+        maker: identical(maker, _unset) ? this.maker : maker as String?,
+        model: identical(model, _unset) ? this.model : model as String?,
+        year: identical(year, _unset) ? this.year : year as int?,
         customContent: customContent ?? this.customContent,
         photos: photos ?? this.photos,
-        deliveryDate: deliveryDate ?? this.deliveryDate,
+        deliveryDate: identical(deliveryDate, _unset)
+            ? this.deliveryDate
+            : deliveryDate as DateTime?,
         isLoading: isLoading ?? this.isLoading,
         error: error,
         editingVehicleId: editingVehicleId ?? this.editingVehicleId,
         existingPhotoUrls: existingPhotoUrls ?? this.existingPhotoUrls,
+        ownerPassionComment: ownerPassionComment ?? this.ownerPassionComment,
       );
 }
+
+const _unset = Object();
 
 class VehicleRegisterNotifier extends Notifier<VehicleRegisterState> {
   @override
@@ -79,6 +92,7 @@ class VehicleRegisterNotifier extends Notifier<VehicleRegisterState> {
       deliveryDate: vehicle.deliveryDate,
       editingVehicleId: vehicle.vehicleId,
       existingPhotoUrls: List.from(vehicle.photos),
+      ownerPassionComment: vehicle.ownerPassionComment,
     );
   }
 

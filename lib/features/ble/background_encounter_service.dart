@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/widgets.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/supabase/supabase_config.dart';
 import 'ble_encounter_service.dart';
 
@@ -25,7 +23,8 @@ class BackgroundEncounterService {
     return prefs.getBool(_kBgEnabledKey) ?? false;
   }
 
-  static Future<void> setEnabled(bool value, {String? userId, bool isPremium = false}) async {
+  static Future<void> setEnabled(bool value,
+      {String? userId, bool isPremium = false}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kBgEnabledKey, value);
     if (userId != null) {
@@ -114,14 +113,15 @@ void _onServiceStart(ServiceInstance service) async {
   );
 
   // Supabase 初期化
+  // Androidのバックグラウンドサービスは別isolateで動くため、この時点では
+  // Supabase.instance に一度も触れておらず、`Supabase.instance` への
+  // アクセス自体が LateInitializationError になる（初期化済みかどうかを
+  // 判定しようとした行が先に例外を投げていた）。判定せず必ず初期化を試みる。
   try {
-    if (Supabase.instance.client.auth.currentUser == null) {
-      await Supabase.initialize(
-        url: SupabaseConfig.supabaseUrl,
-        anonKey: SupabaseConfig.supabaseAnonKey,
-      );
-    }
-  } catch (_) {}
+    await SupabaseConfig.ensureInitialized();
+  } catch (e) {
+    debugPrint('[BackgroundService] Supabase 初期化エラー: $e');
+  }
 
   // SharedPrefs からユーザー情報を取得
   final prefs = await SharedPreferences.getInstance();
@@ -135,7 +135,10 @@ void _onServiceStart(ServiceInstance service) async {
 
   // 停止コマンドを受け付ける
   service.on('stop').listen((_) {
-    BleEncounterService().stop().catchError((_) {}).whenComplete(service.stopSelf);
+    BleEncounterService()
+        .stop()
+        .catchError((_) {})
+        .whenComplete(service.stopSelf);
   });
 
   // BLE 検知開始

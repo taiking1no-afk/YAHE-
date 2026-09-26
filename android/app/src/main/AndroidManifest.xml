@@ -25,9 +25,11 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- カメラ・ストレージ -->
+    <!-- カメラ -->
+    <!-- 写真選択はimage_pickerがAndroidのシステム写真選択ツール(Photo Picker)を
+         使うため、READ_MEDIA_IMAGES/READ_MEDIA_VIDEOは不要（宣言するとGoogle Playの
+         写真と動画の権限ポリシー違反になる）。 -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <!-- 広告ID（AdMob） -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />

@@ -89,8 +89,8 @@ class GearPlusTrialPrompt {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) =>
-          const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      builder: (_) => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary)),
     );
 
     try {
@@ -104,7 +104,11 @@ class GearPlusTrialPrompt {
 
       final user = ref.read(authNotifierProvider).value;
       if (user != null) {
-        await SubscriptionSync.applyPurchase(user.userId, info);
+        await SubscriptionSync.applyPurchase(
+          user.userId,
+          info,
+          productId: AppConstants.gearPlusProductId,
+        );
         ref.invalidate(authNotifierProvider);
       }
 

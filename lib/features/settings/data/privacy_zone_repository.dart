@@ -40,8 +40,7 @@ class PrivacyZoneRepository {
   Future<void> toggleZone(String zoneId, bool isActive) async {
     await _client
         .from('privacy_zones')
-        .update({'is_active': isActive})
-        .eq('zone_id', zoneId);
+        .update({'is_active': isActive}).eq('zone_id', zoneId);
   }
 
   Future<void> deleteZone(String zoneId) async {
@@ -57,7 +56,7 @@ class PrivacyZoneRepository {
   }) async {
     final zones = await _client
         .from('privacy_zones')
-        .select()
+        .select('lat, lng, radius_m')
         .eq('user_id', userId)
         .eq('is_active', true);
 

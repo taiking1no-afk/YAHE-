@@ -7,10 +7,12 @@ import '../data/auth_repository.dart';
 import '../../../core/revenuecat/revenuecat_config.dart';
 import '../../../core/revenuecat/subscription_sync.dart';
 import '../../../core/encounter/encounter_dedupe.dart';
+import '../../../core/supabase/supabase_config.dart';
 import '../../../features/notifications/notification_service.dart';
 import '../../../shared/models/user_model.dart';
 
-final authRepositoryProvider = Provider<AuthRepository>((ref) => AuthRepository());
+final authRepositoryProvider =
+    Provider<AuthRepository>((ref) => AuthRepository());
 
 final authStateProvider = StreamProvider<AuthState>((ref) {
   final repo = ref.read(authRepositoryProvider);
@@ -20,9 +22,22 @@ final authStateProvider = StreamProvider<AuthState>((ref) {
 /// ログインボタン押下中のみ true（初回ロードと分離）
 final signInInProgressProvider = StateProvider<bool>((ref) => false);
 
+/// ログイン失敗メッセージ（一時的な表示用）。
+/// authNotifierProvider の state は失敗直後に AsyncValue.error → 直後に
+/// AsyncValue.data(null) と同一の実行内で連続して上書きされるため、
+/// build() 側で ref.watch(authNotifierProvider) を読んでも中間のエラー状態を
+/// 観測できない（次の再描画時には既に data(null) になっている）。
+/// エラー表示専用にこの独立したプロバイダへ書き込む。
+final signInErrorProvider = StateProvider<String?>((ref) => null);
+
 class AuthNotifier extends AsyncNotifier<UserModel?> {
   @override
   Future<UserModel?> build() async {
+    // runApp直後はSupabaseの初期化がまだ終わっていない可能性がある
+    // （main.dartがrunAppをブロックせずに初期化を開始する構成のため）。
+    // ここで完了を待ってから Supabase.instance に触れる。
+    await SupabaseConfig.ensureInitialized();
+
     final repo = ref.read(authRepositoryProvider);
 
     // OAuth 完了（Deep Link 復帰）時にユーザーを反映
@@ -88,17 +103,19 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
 
   Future<void> signInWithGoogle() async {
     ref.read(signInInProgressProvider.notifier).state = true;
+    ref.read(signInErrorProvider.notifier).state = null;
     try {
       final repo = ref.read(authRepositoryProvider);
       final user = await repo.signInWithGoogle();
       if (user != null) {
-        await RevenueCatConfig.logIn(user.userId);
         EncounterTestMode.setServerAllowed(user.encounterTestMode);
-        await SubscriptionSync.syncToSupabase(user.userId);
-        final synced = await repo.fetchCurrentUser();
-        if (synced != null) EncounterTestMode.setServerAllowed(synced.encounterTestMode);
         NotificationService().saveFcmTokenToSupabase(user.userId);
-        state = AsyncValue.data(synced ?? user);
+        // RevenueCatログイン・サブスク同期をここで await していると、ログアウト直後の
+        // 再ログインでRevenueCat側の状態が不安定になった際にログイン処理自体が
+        // 永久に完了しない（ローディングのまま固まる）ことがあった。build()と同じく
+        // クリティカルパスから外し、バックグラウンドで実行する。
+        state = AsyncValue.data(user);
+        unawaited(_syncSubscriptionInBackground(user.userId));
       } else {
         state = const AsyncValue.data(null);
       }
@@ -106,6 +123,7 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
       debugPrint('[AuthNotifier] Google sign-in error: $e');
       state = AsyncValue.error(e, st);
       state = const AsyncValue.data(null);
+      ref.read(signInErrorProvider.notifier).state = 'ログインに失敗しました。もう一度お試しください。';
     } finally {
       ref.read(signInInProgressProvider.notifier).state = false;
     }
@@ -113,17 +131,16 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
 
   Future<void> signInWithApple() async {
     ref.read(signInInProgressProvider.notifier).state = true;
+    ref.read(signInErrorProvider.notifier).state = null;
     try {
       final repo = ref.read(authRepositoryProvider);
       final user = await repo.signInWithApple();
       if (user != null) {
-        await RevenueCatConfig.logIn(user.userId);
         EncounterTestMode.setServerAllowed(user.encounterTestMode);
-        await SubscriptionSync.syncToSupabase(user.userId);
-        final synced = await repo.fetchCurrentUser();
-        if (synced != null) EncounterTestMode.setServerAllowed(synced.encounterTestMode);
         NotificationService().saveFcmTokenToSupabase(user.userId);
-        state = AsyncValue.data(synced ?? user);
+        // Google側と同様、RevenueCat同期をクリティカルパスから外す（理由は同上）。
+        state = AsyncValue.data(user);
+        unawaited(_syncSubscriptionInBackground(user.userId));
       } else {
         state = const AsyncValue.data(null);
       }
@@ -131,6 +148,7 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
       debugPrint('[AuthNotifier] Apple sign-in error: $e');
       state = AsyncValue.error(e, st);
       state = const AsyncValue.data(null);
+      ref.read(signInErrorProvider.notifier).state = 'ログインに失敗しました。もう一度お試しください。';
     } finally {
       ref.read(signInInProgressProvider.notifier).state = false;
     }

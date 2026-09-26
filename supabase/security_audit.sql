@@ -55,5 +55,31 @@ WHERE schemaname = 'public'
   AND tablename = 'users'
   AND cmd = 'SELECT';
 
--- 期待結果:
---   users_select_related のみ（users_select_public / users_select_authenticated は無い）
+-- 7) v1.28: 課金 RPC / debug seed / fulfill の権限
+SELECT
+  p.proname,
+  has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth_can_exec,
+  has_function_privilege('service_role', p.oid, 'EXECUTE') AS service_can_exec
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public'
+  AND p.proname IN (
+    'sync_subscription_plan',
+    'grant_gear_plus',
+    'debug_seed_encounters',
+    'fulfill_consumable_purchase',
+    'activate_timed_item',
+    'send_like'
+  )
+ORDER BY p.proname;
+-- 期待:
+--   sync_subscription_plan / grant_gear_plus / debug_seed_encounters / fulfill_consumable_purchase
+--     → auth_can_exec = false, service_can_exec = true
+--   activate_timed_item / send_like → auth_can_exec = true
+
+-- 8) likes 一意制約（相手ユーザー単位）
+SELECT conname, pg_get_constraintdef(oid)
+FROM pg_constraint
+WHERE conrelid = 'public.likes'::regclass
+  AND conname = 'likes_unique_pair';
+-- 期待: UNIQUE (from_user_id, to_user_id)

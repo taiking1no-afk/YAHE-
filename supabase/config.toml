@@ -1,0 +1,25 @@
+# YAHE Supabase CLI 設定
+# https://supabase.com/docs/guides/functions/function-configuration
+
+[functions.revenuecat-webhook]
+# RevenueCat は Supabase JWT ではなく自前の Bearer SECRET を送るため無効化。
+# 認可は functions/revenuecat-webhook/index.ts 内で REVENUECAT_WEBHOOK_SECRET を検証する。
+verify_jwt = false
+
+[functions.sync-subscription]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
+
+[functions.send-encounter-notification]
+verify_jwt = true
+
+[functions.send-like-notification]
+verify_jwt = true
+
+[functions.gear-r-monthly]
+verify_jwt = true
+
+[functions.ops-alert]
+verify_jwt = true

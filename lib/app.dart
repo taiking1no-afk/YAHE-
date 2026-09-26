@@ -17,6 +17,18 @@ class SurfApp extends ConsumerWidget {
       themeMode: ThemeMode.light,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
+      // 端末の文字サイズ設定(アクセシビリティ)が極端に大きいと、ボタンのラベルが
+      // 折り返されて縦書き状態になりタップも反応しなくなるため、倍率の上限を抑える。
+      builder: (context, child) {
+        final mediaQuery = MediaQuery.of(context);
+        return MediaQuery(
+          data: mediaQuery.copyWith(
+            textScaler: mediaQuery.textScaler
+                .clamp(minScaleFactor: 0.9, maxScaleFactor: 1.3),
+          ),
+          child: child!,
+        );
+      },
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:purchases_flutter/errors.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../config/yahe_secrets.dart';
@@ -56,8 +60,14 @@ class RevenueCatConfig {
     if (!isConfigured) return;
     await _initFuture;
     try {
-      final result = await Purchases.logIn(userId);
-      debugPrint('[RevenueCat] logIn: ${result.customerInfo.originalAppUserId}');
+      // ログアウト直後の再ログインなど、直前のlogOut呼び出しとSDK内部で競合すると
+      // 稀に応答が返らなくなることがあるため、呼び出し側を無限に固まらせない。
+      final result = await Purchases.logIn(userId).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => throw TimeoutException('RevenueCat logIn timeout'),
+      );
+      debugPrint(
+          '[RevenueCat] logIn: ${result.customerInfo.originalAppUserId}');
     } catch (e) {
       debugPrint('[RevenueCat] logIn error: $e');
     }
@@ -68,7 +78,10 @@ class RevenueCatConfig {
     if (!isConfigured) return;
     await _initFuture;
     try {
-      await Purchases.logOut();
+      await Purchases.logOut().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => throw TimeoutException('RevenueCat logOut timeout'),
+      );
     } catch (e) {
       debugPrint('[RevenueCat] logOut error: $e');
     }
@@ -120,9 +133,12 @@ class RevenueCatConfig {
         productId,
         type: PurchaseType.subs,
       );
-      return result;
-    } on PurchasesErrorCode catch (e) {
-      if (e == PurchasesErrorCode.purchaseCancelledError) return null;
+      return result.customerInfo;
+    } on PlatformException catch (e) {
+      // purchases_flutter は PlatformException を投げる。
+      // キャンセルは null 返却、それ以外は呼び出し元でハンドリングする。
+      final code = PurchasesErrorHelper.getErrorCode(e);
+      if (code == PurchasesErrorCode.purchaseCancelledError) return null;
       rethrow;
     }
   }

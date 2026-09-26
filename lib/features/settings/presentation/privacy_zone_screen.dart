@@ -37,7 +37,12 @@ class _PrivacyZoneScreenState extends ConsumerState<PrivacyZoneScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchLocation();
+    // 端末のキャッシュ済み位置が即座に返るケースでは、initStateから直接
+    // 呼ぶと FlutterMap がまだマウントされる前に _mapController.move() が
+    // 呼ばれてしまうことがあった（flutter_map既知の問題）。この例外は
+    // 非同期コールバック内で発生するため、囲んでいる try/catch では
+    // 捕捉できずクラッシュしていた。初回フレーム描画後まで遅延させる。
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchLocation());
   }
 
   Future<void> _fetchLocation() async {
@@ -52,11 +57,31 @@ class _PrivacyZoneScreenState extends ConsumerState<PrivacyZoneScreen> {
       );
       if (!mounted) return;
       setState(() => _currentPosition = pos);
-      _mapController.move(LatLng(pos.latitude, pos.longitude), 14);
+      try {
+        _mapController.move(LatLng(pos.latitude, pos.longitude), 14);
+      } catch (_) {
+        // マップがまだ準備できていない場合は無視する（initialCenterで
+        // 既に現在地を中心に表示しようとするため、実害はない）。
+      }
     } catch (_) {}
   }
 
   void _onMapTap(TapPosition tapPos, LatLng latlng) {
+    // FlutterMapのonTapコールバックは、その地図自身のジェスチャー処理が
+    // 完了する前に同期的に呼ばれる。ここで直接setStateしてFlutterMap自体を
+    // 再構築したり、さらにshowModalBottomSheetでルートをpushしたりすると、
+    // flutter_map側の後始末が間に合わず "_dependents.isEmpty" の
+    // フレームワークアサーションでクラッシュすることがあった
+    // （タップ→ゾーン追加シートの表示直後にクラッシュする不具合の原因）。
+    // 1フレーム後まで処理を遅延させ、タップのジェスチャー処理と
+    // ウィジェットツリーの変更を同一フレーム内で競合させないようにする。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _handleMapTap(latlng);
+    });
+  }
+
+  void _handleMapTap(LatLng latlng) {
     setState(() => _pendingLatLng = latlng);
     final user = ref.read(authNotifierProvider).value;
     if (user == null) return;
@@ -112,14 +137,17 @@ class _PrivacyZoneScreenState extends ConsumerState<PrivacyZoneScreen> {
                 // 操作ガイド
                 Container(
                   color: AppColors.primary.withOpacity(0.06),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   child: const Row(
                     children: [
-                      Icon(Icons.touch_app_outlined, size: 16, color: AppColors.primary),
+                      Icon(Icons.touch_app_outlined,
+                          size: 16, color: AppColors.primary),
                       SizedBox(width: 8),
                       Text(
                         '地図上の好きな場所をタップしてゾーンを追加',
-                        style: TextStyle(color: AppColors.primary, fontSize: 13),
+                        style:
+                            TextStyle(color: AppColors.primary, fontSize: 13),
                       ),
                     ],
                   ),
@@ -141,33 +169,55 @@ class _PrivacyZoneScreenState extends ConsumerState<PrivacyZoneScreen> {
                 // ゾーン一覧
                 Expanded(
                   child: ref.watch(privacyZonesProvider(user.userId)).when(
-                    loading: () => const Center(
-                      child: CircularProgressIndicator(color: AppColors.primary),
-                    ),
-                    error: (e, _) => const Center(child: Text('読み込みに失敗しました')),
-                    data: (zones) {
-                      if (zones.isEmpty) {
-                        return _EmptyZoneState();
-                      }
-                      return ListView.builder(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        itemCount: zones.length,
-                        itemBuilder: (context, i) => _ZoneTile(
-                          zone: zones[i],
-                          onToggle: (v) async {
-                            final repo = ref.read(privacyZoneRepositoryProvider);
-                            await repo.toggleZone(zones[i].zoneId, v);
-                            ref.invalidate(privacyZonesProvider(user.userId));
-                          },
-                          onDelete: () async {
-                            final repo = ref.read(privacyZoneRepositoryProvider);
-                            await repo.deleteZone(zones[i].zoneId);
-                            ref.invalidate(privacyZonesProvider(user.userId));
-                          },
+                        loading: () => const Center(
+                          child: CircularProgressIndicator(
+                              color: AppColors.primary),
                         ),
-                      );
-                    },
-                  ),
+                        error: (e, _) =>
+                            const Center(child: Text('読み込みに失敗しました')),
+                        data: (zones) {
+                          if (zones.isEmpty) {
+                            return _EmptyZoneState();
+                          }
+                          return ListView.builder(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            itemCount: zones.length,
+                            itemBuilder: (context, i) => _ZoneTile(
+                              zone: zones[i],
+                              onToggle: (v) async {
+                                final repo =
+                                    ref.read(privacyZoneRepositoryProvider);
+                                try {
+                                  await repo.toggleZone(zones[i].zoneId, v);
+                                  ref.invalidate(
+                                      privacyZonesProvider(user.userId));
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('変更に失敗しました: $e')),
+                                    );
+                                  }
+                                }
+                              },
+                              onDelete: () async {
+                                final repo =
+                                    ref.read(privacyZoneRepositoryProvider);
+                                try {
+                                  await repo.deleteZone(zones[i].zoneId);
+                                  ref.invalidate(
+                                      privacyZonesProvider(user.userId));
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('削除に失敗しました: $e')),
+                                    );
+                                  }
+                                }
+                              },
+                            ),
+                          );
+                        },
+                      ),
                 ),
               ],
             ),
@@ -204,12 +254,14 @@ class _PrivacyZoneScreenState extends ConsumerState<PrivacyZoneScreen> {
               const SizedBox(height: 6),
               Text(
                 '${latlng.latitude.toStringAsFixed(5)}, ${latlng.longitude.toStringAsFixed(5)}',
-                style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                style:
+                    const TextStyle(color: AppColors.textMuted, fontSize: 12),
               ),
               const SizedBox(height: 16),
 
               // 名称（自由入力）
-              const Text('ゾーン名', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+              const Text('ゾーン名',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
               const SizedBox(height: 6),
               TextField(
                 controller: labelCtrl,
@@ -224,40 +276,62 @@ class _PrivacyZoneScreenState extends ConsumerState<PrivacyZoneScreen> {
               // サイズスライダー（中心から各辺までの距離）
               Row(
                 children: [
-                  const Text('サイズ（中心から）', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  const Text('サイズ（中心から）',
+                      style:
+                          TextStyle(color: AppColors.textMuted, fontSize: 12)),
                   const Spacer(),
                   Text(
                     radius >= 1000
                         ? '${(radius / 1000).toStringAsFixed(1)} km'
                         : '$radius m',
-                    style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700, fontSize: 13),
+                    style: const TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13),
                   ),
                 ],
               ),
-              Slider(
-                value: radius.toDouble(),
-                min: 100,
-                max: 3000,
-                divisions: 29,
-                activeColor: AppColors.primary,
-                onChanged: (v) => setS(() => radius = v.round()),
+              SliderTheme(
+                // オーバーレイ(リップル)を無効化。ドラッグ直後にシートを閉じた際、
+                // アニメーション中のオーバーレイの後始末が間に合わず
+                // クラッシュする既知のFlutterの問題を避けるため。
+                data: SliderTheme.of(context).copyWith(
+                  overlayShape: SliderComponentShape.noOverlay,
+                ),
+                child: Slider(
+                  value: radius.toDouble(),
+                  min: 100,
+                  max: 3000,
+                  divisions: 29,
+                  activeColor: AppColors.primary,
+                  onChanged: (v) => setS(() => radius = v.round()),
+                ),
               ),
               const SizedBox(height: 16),
 
               ElevatedButton(
-                onPressed: () async {
+                onPressed: () {
                   final name = labelCtrl.text.trim();
+                  // TextField(autofocus: true) にフォーカスが残ったまま
+                  // ボトムシートをpopすると、フォーカスの解放処理が完了する前に
+                  // ウィジェットツリーから取り除かれ、
+                  // "_dependents.isEmpty" のフレームワークアサーションで
+                  // クラッシュすることがあった。popする前に明示的にフォーカスを外す。
+                  FocusScope.of(ctx).unfocus();
                   Navigator.pop(ctx);
-                  setState(() => _pendingLatLng = null);
-                  final repo = ref.read(privacyZoneRepositoryProvider);
-                  await repo.createZone(
-                    userId: userId,
-                    lat: latlng.latitude,
-                    lng: latlng.longitude,
-                    radiusM: radius,
-                    label: name.isEmpty ? 'ゾーン' : name,
-                  );
-                  ref.invalidate(privacyZonesProvider(userId));
+                  // popの直後に親画面（地図を含む）へ同期的にsetStateすると、
+                  // ボトムシートのpop処理がまだ完了していない同一フレーム内で
+                  // FlutterMapを含む親のウィジェットツリーが変更されることになり、
+                  // 上と同じ種類のクラッシュが起きていた。次のフレームまで
+                  // 完全に遅延させ、popの後始末と完全に切り離す。
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _createZoneAfterDialogClosed(
+                      userId: userId,
+                      latlng: latlng,
+                      radius: radius,
+                      name: name,
+                    );
+                  });
                 },
                 child: const Text('追加'),
               ),
@@ -265,7 +339,42 @@ class _PrivacyZoneScreenState extends ConsumerState<PrivacyZoneScreen> {
           ),
         ),
       ),
-    ).whenComplete(() => setState(() => _pendingLatLng = null));
+    ).whenComplete(() {
+      setState(() => _pendingLatLng = null);
+      // labelCtrlはこのメソッドのローカル変数のためStateのdispose()では
+      // 破棄されず、ダイアログを開くたびにリークしていた。
+      labelCtrl.dispose();
+    });
+  }
+
+  Future<void> _createZoneAfterDialogClosed({
+    required String userId,
+    required LatLng latlng,
+    required int radius,
+    required String name,
+  }) async {
+    if (!mounted) return;
+    setState(() => _pendingLatLng = null);
+    final repo = ref.read(privacyZoneRepositoryProvider);
+    try {
+      await repo.createZone(
+        userId: userId,
+        lat: latlng.latitude,
+        lng: latlng.longitude,
+        radiusM: radius,
+        label: name.isEmpty ? 'ゾーン' : name,
+      );
+      ref.invalidate(privacyZonesProvider(userId));
+    } catch (e) {
+      if (!mounted) return;
+      if (e.toString().contains('privacy_zone_limit_reached')) {
+        _showZoneLimitReached();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('追加に失敗しました: $e')),
+        );
+      }
+    }
   }
 }
 
@@ -417,7 +526,8 @@ class _ZoneTile extends StatelessWidget {
             activeColor: AppColors.primary,
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline, color: AppColors.error, size: 20),
+            icon: const Icon(Icons.delete_outline,
+                color: AppColors.error, size: 20),
             onPressed: onDelete,
           ),
         ],
@@ -442,7 +552,8 @@ class _EmptyZoneState extends StatelessWidget {
           SizedBox(height: 6),
           Text(
             '地図上をタップして\nプライバシーゾーンを追加できます',
-            style: TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.6),
+            style: TextStyle(
+                color: AppColors.textMuted, fontSize: 12, height: 1.6),
             textAlign: TextAlign.center,
           ),
         ],

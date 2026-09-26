@@ -35,6 +35,7 @@ type ReportRow = {
   likes_received: number;
   likes_sent: number;
   matches: number;
+  link_clicks?: number;
   push_sent_at: string | null;
 };
 
@@ -98,9 +99,10 @@ serve(async (req) => {
       }
 
       const title = `📊 ${month}月のアクセスレポート`;
+      const linkClicks = row.link_clicks ?? 0;
       const bodyText =
         `すれ違い ${row.encounters}回 · プロフィール閲覧 ${row.profile_views}回\n` +
-        `いいね ${row.likes_received}件 · マッチ ${row.matches}件\n` +
+        `SNS開封 ${linkClicks}回 · いいね ${row.likes_received}件 · マッチ ${row.matches}件\n` +
         `アプリのストアから詳細を確認できます`;
 
       try {

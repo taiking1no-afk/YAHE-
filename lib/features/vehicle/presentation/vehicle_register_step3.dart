@@ -19,7 +19,8 @@ class VehicleRegisterStep3 extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<VehicleRegisterStep3> createState() => _VehicleRegisterStep3State();
+  ConsumerState<VehicleRegisterStep3> createState() =>
+      _VehicleRegisterStep3State();
 }
 
 class _VehicleRegisterStep3State extends ConsumerState<VehicleRegisterStep3> {
@@ -86,7 +87,8 @@ class _VehicleRegisterStep3State extends ConsumerState<VehicleRegisterStep3> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('愛車登録'),
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: widget.onBack),
+        leading: IconButton(
+            icon: const Icon(Icons.arrow_back), onPressed: widget.onBack),
       ),
       body: Column(
         children: [
@@ -99,7 +101,8 @@ class _VehicleRegisterStep3State extends ConsumerState<VehicleRegisterStep3> {
                 children: [
                   const Text(
                     '愛車の写真を追加してください（最大5枚）',
-                    style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                    style:
+                        TextStyle(color: AppColors.textSecondary, fontSize: 13),
                   ),
                   const SizedBox(height: 4),
                   const Text(
@@ -110,13 +113,17 @@ class _VehicleRegisterStep3State extends ConsumerState<VehicleRegisterStep3> {
                   _PhotoGrid(
                     existingPhotos: regState.existingPhotoUrls,
                     photos: regState.photos,
-                    onAdd: (regState.photos.length + regState.existingPhotoUrls.length) < 5
+                    onAdd: (regState.photos.length +
+                                regState.existingPhotoUrls.length) <
+                            5
                         ? _pickImage
                         : null,
-                    onRemoveNew: (i) =>
-                        ref.read(vehicleRegisterProvider.notifier).removeNewPhoto(i),
-                    onRemoveExisting: (i) =>
-                        ref.read(vehicleRegisterProvider.notifier).removeExistingPhoto(i),
+                    onRemoveNew: (i) => ref
+                        .read(vehicleRegisterProvider.notifier)
+                        .removeNewPhoto(i),
+                    onRemoveExisting: (i) => ref
+                        .read(vehicleRegisterProvider.notifier)
+                        .removeExistingPhoto(i),
                   ),
                   const SizedBox(height: 32),
                   // SNS登録案内
@@ -129,12 +136,14 @@ class _VehicleRegisterStep3State extends ConsumerState<VehicleRegisterStep3> {
                     ),
                     child: const Row(
                       children: [
-                        Icon(Icons.info_outline, color: AppColors.textMuted, size: 18),
+                        Icon(Icons.info_outline,
+                            color: AppColors.textMuted, size: 18),
                         SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             'SNSアカウントはマッチング後にプロフィール設定で追加できます',
-                            style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                            style: TextStyle(
+                                color: AppColors.textMuted, fontSize: 12),
                           ),
                         ),
                       ],
@@ -149,7 +158,8 @@ class _VehicleRegisterStep3State extends ConsumerState<VehicleRegisterStep3> {
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
             color: AppColors.background,
             child: regState.isLoading
-                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary))
                 : ElevatedButton(
                     onPressed: (regState.photos.isNotEmpty ||
                             regState.existingPhotoUrls.isNotEmpty)
@@ -159,7 +169,23 @@ class _VehicleRegisterStep3State extends ConsumerState<VehicleRegisterStep3> {
                             final vehicle = await ref
                                 .read(vehicleRegisterProvider.notifier)
                                 .submit(user.userId);
-                            if (vehicle != null) widget.onComplete();
+                            if (vehicle != null) {
+                              widget.onComplete();
+                            } else if (context.mounted) {
+                              // submit()が失敗すると、以前はローディングが
+                              // 消えるだけで「登録完了」を押しても何も起きて
+                              // いないように見えていた（エラーはstateに
+                              // 保存されるだけで、どこからも表示されていなかった）。
+                              final err =
+                                  ref.read(vehicleRegisterProvider).error;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(err != null
+                                      ? '登録に失敗しました: $err'
+                                      : '登録に失敗しました。もう一度お試しください。'),
+                                ),
+                              );
+                            }
                           }
                         : null,
                     style: ElevatedButton.styleFrom(
@@ -293,9 +319,11 @@ class _AddButton extends StatelessWidget {
         child: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add_photo_alternate_outlined, color: AppColors.textMuted, size: 28),
+            Icon(Icons.add_photo_alternate_outlined,
+                color: AppColors.textMuted, size: 28),
             SizedBox(height: 4),
-            Text('追加', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+            Text('追加',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
           ],
         ),
       ),

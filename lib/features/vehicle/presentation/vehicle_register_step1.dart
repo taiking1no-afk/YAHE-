@@ -74,7 +74,8 @@ class _VehicleRegisterStep1State extends ConsumerState<VehicleRegisterStep1> {
                     onSelect: notifier.setMaker,
                   ),
                   const SizedBox(height: 20),
-                  _Label(reg.vehicleType == VehicleType.bike ? '車種名（型式）' : '車種名'),
+                  _Label(
+                      reg.vehicleType == VehicleType.bike ? '車種名（型式）' : '車種名'),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _modelCtrl,
@@ -122,7 +123,10 @@ class _Label extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text,
-        style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w600),
+        style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 13,
+            fontWeight: FontWeight.w600),
       );
 }
 
@@ -155,7 +159,8 @@ class _TypeButton extends StatelessWidget {
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
-  const _TypeButton({required this.label, required this.isSelected, required this.onTap});
+  const _TypeButton(
+      {required this.label, required this.isSelected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +170,9 @@ class _TypeButton extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withOpacity(0.1) : AppColors.surface,
+          color: isSelected
+              ? AppColors.primary.withOpacity(0.1)
+              : AppColors.surface,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected ? AppColors.primary : AppColors.border,
@@ -211,7 +218,9 @@ class _MakerGrid extends StatelessWidget {
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: isSelected ? AppColors.primary.withOpacity(0.1) : AppColors.surface,
+              color: isSelected
+                  ? AppColors.primary.withOpacity(0.1)
+                  : AppColors.surface,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: isSelected ? AppColors.primary : AppColors.border,
@@ -249,8 +258,11 @@ class _YearPicker extends StatelessWidget {
       dropdownColor: AppColors.surface,
       style: const TextStyle(color: AppColors.textPrimary),
       items: [
-        const DropdownMenuItem<int>(value: null, child: Text('選択しない', style: TextStyle(color: AppColors.textMuted))),
-        ...years.map((y) => DropdownMenuItem<int>(value: y, child: Text(y.toString()))),
+        const DropdownMenuItem<int>(
+            value: null,
+            child: Text('選択しない', style: TextStyle(color: AppColors.textMuted))),
+        ...years.map(
+            (y) => DropdownMenuItem<int>(value: y, child: Text(y.toString()))),
       ],
       onChanged: onSelect,
     );
@@ -275,8 +287,8 @@ class _DeliveryDatePicker extends StatelessWidget {
           builder: (context, child) => Theme(
             data: Theme.of(context).copyWith(
               colorScheme: Theme.of(context).colorScheme.copyWith(
-                primary: AppColors.primary,
-              ),
+                    primary: AppColors.primary,
+                  ),
             ),
             child: child!,
           ),
@@ -293,14 +305,17 @@ class _DeliveryDatePicker extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.calendar_today_outlined, size: 18, color: AppColors.textMuted),
+            const Icon(Icons.calendar_today_outlined,
+                size: 18, color: AppColors.textMuted),
             const SizedBox(width: 10),
             Text(
               selected != null
                   ? DateFormat('yyyy年M月d日').format(selected!)
                   : '納車日を選択',
               style: TextStyle(
-                color: selected != null ? AppColors.textPrimary : AppColors.textMuted,
+                color: selected != null
+                    ? AppColors.textPrimary
+                    : AppColors.textMuted,
                 fontSize: 15,
               ),
             ),
@@ -308,7 +323,8 @@ class _DeliveryDatePicker extends StatelessWidget {
             if (selected != null)
               GestureDetector(
                 onTap: () => onSelect(null),
-                child: const Icon(Icons.close, size: 16, color: AppColors.textMuted),
+                child: const Icon(Icons.close,
+                    size: 16, color: AppColors.textMuted),
               ),
           ],
         ),

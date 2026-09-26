@@ -26,20 +26,17 @@ extension ItemTypeX on ItemType {
       };
 
   String get description => switch (this) {
-        ItemType.nitro =>
-          '1時間、すれ違った人のYAHEリスト上位に表示されます',
-        ItemType.shibu =>
-          'いいねされた人のリスト上位に表示されます（1個消費）',
-        ItemType.superNitro =>
-          '1時間、YAHEリスト最上位に表示＋目立つバッジ付き',
-        ItemType.gekiShibu =>
-          'いいねリスト最上位に表示＋目立つバッジ付き（1個消費）',
-        ItemType.gearPlus24h =>
-          'いいね無制限・すれ違い履歴7日間・愛車ガード無制限が24時間使える',
+        ItemType.nitro => '1時間、すれ違った人のYAHEリスト上位に表示されます',
+        ItemType.shibu => 'いいねされた人のリスト上位に表示されます（1個消費）',
+        ItemType.superNitro => '1時間、YAHEリスト最上位に表示＋目立つバッジ付き',
+        ItemType.gekiShibu => 'いいねリスト最上位に表示＋目立つバッジ付き（1個消費）',
+        ItemType.gearPlus24h => 'いいね無制限・すれ違い履歴7日間・愛車ガード無制限が24時間使える',
       };
 
   bool get isTimedItem =>
-      this == ItemType.nitro || this == ItemType.superNitro || this == ItemType.gearPlus24h;
+      this == ItemType.nitro ||
+      this == ItemType.superNitro ||
+      this == ItemType.gearPlus24h;
 
   Duration get timedDuration => switch (this) {
         ItemType.gearPlus24h => const Duration(hours: 24),
@@ -92,10 +89,12 @@ class UserItemState {
   });
 
   bool get isActive {
-    if (!type.isTimedItem) return false;
     if (activeUntil == null) return false;
     return DateTime.now().isBefore(activeUntil!);
   }
+
+  /// ニトロ系（時限発動）または渋！系（消費ブースト）が有効か
+  bool get isBoostActive => isActive && type != ItemType.gearPlus24h;
 
   String get remainingLabel {
     if (!isActive) return '';

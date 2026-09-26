@@ -43,6 +43,8 @@ serve(async (req) => {
     const authUserId = user.id;
 
     // 可能なら Storage の参照（object名）を先に掃除してから auth.users を削除する
+    let storageCleanupCounts: Record<string, number> = {};
+    let yaheUserId: string | null = null;
     try {
       const { data: publicUser } = await supabase
         .from('users')
@@ -50,9 +52,9 @@ serve(async (req) => {
         .eq('auth_id', authUserId)
         .maybeSingle();
 
-      const yaheUserId = publicUser?.user_id;
+      yaheUserId = publicUser?.user_id ?? null;
       if (yaheUserId) {
-        await cleanupStorageBestEffort(supabase, yaheUserId);
+        storageCleanupCounts = await cleanupStorageBestEffort(supabase, yaheUserId);
       }
     } catch (_) {
       // storage cleanup はベストエフォート（本体削除を止めない）
@@ -66,9 +68,24 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: corsHeaders(),
-    });
+    // 削除完了確認：public.users 側の行がFKカスケードで実際に消えたかを確認する
+    let verified = true;
+    if (yaheUserId) {
+      try {
+        const { count } = await supabase
+          .from('users')
+          .select('user_id', { count: 'exact', head: true })
+          .eq('user_id', yaheUserId);
+        verified = (count ?? 0) === 0;
+      } catch (_) {
+        verified = false;
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ ok: true, verified, storage_cleanup: storageCleanupCounts }),
+      { headers: corsHeaders() },
+    );
   } catch (e) {
     console.error('[delete-account]', e);
     return new Response(JSON.stringify({ error: String(e) }), {
@@ -81,16 +98,32 @@ serve(async (req) => {
 async function cleanupStorageBestEffort(
   supabase: ReturnType<typeof createClient>,
   yaheUserId: string,
-) {
-  // profile-photos: avatar_{userId}_* の object を削除
+): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+
+  // profile-photos: ルートおよび userId 配下の avatar_* を削除
   try {
-    const { data: avatarObjects } = await supabase.storage.from('profile-photos').list('');
-    const toRemove = (avatarObjects ?? [])
-      .filter((o: any) => String(o?.name ?? '').startsWith(`avatar_${yaheUserId}_`))
-      .map((o: any) => o.name as string);
-    if (toRemove.length > 0) {
-      await supabase.storage.from('profile-photos').remove(toRemove);
+    const bucket = 'profile-photos';
+    const roots = ['', yaheUserId];
+    let removed = 0;
+    for (const prefix of roots) {
+      const { data: objects } = await supabase.storage.from(bucket).list(prefix);
+      const toRemove = (objects ?? [])
+        .map((o: any) => {
+          const name = String(o?.name ?? '');
+          if (!name) return null;
+          if (prefix === '') {
+            return name.startsWith(`avatar_${yaheUserId}_`) ? name : null;
+          }
+          return `${prefix}/${name}`;
+        })
+        .filter((n: string | null): n is string => n != null);
+      if (toRemove.length > 0) {
+        await supabase.storage.from(bucket).remove(toRemove);
+        removed += toRemove.length;
+      }
     }
+    counts[bucket] = removed;
   } catch (_) {}
 
   // vehicle-photos: vehicles.photos に含まれる参照から object 名を抽出して削除
@@ -110,11 +143,100 @@ async function cleanupStorageBestEffort(
       }
     }
 
+    // userId フォルダ直下も掃除
+    try {
+      const { data: folderObjs } = await supabase.storage.from(bucket).list(yaheUserId);
+      for (const o of folderObjs ?? []) {
+        const name = String(o?.name ?? '');
+        if (name) fileNames.add(`${yaheUserId}/${name}`);
+      }
+    } catch (_) {}
+
     const names = [...fileNames];
     if (names.length > 0) {
       await supabase.storage.from(bucket).remove(names);
     }
+    counts[bucket] = names.length;
   } catch (_) {}
+
+  // chat-photos: {senderUserId}/{filename} 構造なので、フォルダごと削除でよい
+  // （このフォルダは本人が送信した写真しか置かれない）
+  try {
+    const bucket = 'chat-photos';
+    const { data: objects } = await supabase.storage.from(bucket).list(yaheUserId);
+    const names = (objects ?? [])
+      .map((o: any) => String(o?.name ?? ''))
+      .filter((n: string) => n.length > 0)
+      .map((n: string) => `${yaheUserId}/${n}`);
+    if (names.length > 0) {
+      await supabase.storage.from(bucket).remove(names);
+    }
+    counts[bucket] = names.length;
+  } catch (_) {}
+
+  // board-photos: board_posts.image_path（本人が主催する投稿分のみ）から抽出
+  try {
+    const bucket = 'board-photos';
+    const { data: posts } = await supabase
+      .from('board_posts')
+      .select('image_path')
+      .eq('organizer_id', yaheUserId)
+      .not('image_path', 'is', null);
+
+    const names = new Set<string>();
+    for (const p of posts ?? []) {
+      const name = extractStorageObjectName(String(p?.image_path ?? ''), bucket);
+      if (name) names.add(name);
+    }
+    if (names.size > 0) {
+      await supabase.storage.from(bucket).remove([...names]);
+    }
+    counts[bucket] = names.size;
+  } catch (_) {}
+
+  // group-photos: groups.icon_url（本人がオーナーのグループ分のみ）から抽出
+  try {
+    const bucket = 'group-photos';
+    const { data: groups } = await supabase
+      .from('groups')
+      .select('icon_url')
+      .eq('owner_id', yaheUserId)
+      .not('icon_url', 'is', null);
+
+    const names = new Set<string>();
+    for (const g of groups ?? []) {
+      const name = extractStorageObjectName(String(g?.icon_url ?? ''), bucket);
+      if (name) names.add(name);
+    }
+    if (names.size > 0) {
+      await supabase.storage.from(bucket).remove([...names]);
+    }
+    counts[bucket] = names.size;
+  } catch (_) {}
+
+  // group-chat-photos: {group_id}/{filename} の共有フォルダのため、フォルダ
+  // ごと削除すると他メンバーの写真まで消えてしまう。group_messages.photo_path
+  // WHERE sender_id=本人 で特定できる自分の投稿分のパスのみを個別に削除する。
+  try {
+    const bucket = 'group-chat-photos';
+    const { data: messages } = await supabase
+      .from('group_messages')
+      .select('photo_path')
+      .eq('sender_id', yaheUserId)
+      .not('photo_path', 'is', null);
+
+    const names = new Set<string>();
+    for (const m of messages ?? []) {
+      const name = extractStorageObjectName(String(m?.photo_path ?? ''), bucket);
+      if (name) names.add(name);
+    }
+    if (names.size > 0) {
+      await supabase.storage.from(bucket).remove([...names]);
+    }
+    counts[bucket] = names.size;
+  } catch (_) {}
+
+  return counts;
 }
 
 function extractStorageObjectName(stored: string, bucket: string): string | null {

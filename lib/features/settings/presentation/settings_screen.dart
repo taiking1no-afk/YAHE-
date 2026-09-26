@@ -5,9 +5,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/encounter/encounter_dedupe.dart';
-import '../../../shared/widgets/yahe_app_bar.dart';
-import '../../auth/data/auth_repository.dart';
 import '../../auth/presentation/auth_provider.dart';
 import '../../ble/background_encounter_service.dart';
 import '../../debug/debug_screen.dart';
@@ -18,9 +15,9 @@ import '../../legal/contact_screen.dart';
 import '../../notifications/notification_service.dart';
 import '../../profile/data/user_repository.dart';
 import '../../profile/presentation/profile_edit_screen.dart';
+import 'data_subject_request_screen.dart';
 import 'privacy_zone_screen.dart';
 import 'block_list_screen.dart';
-import 'gear_plus_screen.dart';
 
 final _userRepoProvider = Provider<UserRepository>((ref) => UserRepository());
 
@@ -38,8 +35,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _motivationEnabled = false;
   bool _quietEnabled = true;
   bool _bgDetectionEnabled = false;
-  bool _encounterTestModeEnabled = false;
   bool _prefsLoaded = false;
+
+  // authNotifierProviderの再取得(ネットワーク往復)を待たずにスイッチを
+  // 即座に反映するための楽観的更新用オーバーライド。失敗時のみnullに戻す。
+  bool? _anonymousModeOverride;
+  bool? _isPrivateOverride;
+
+  Future<void> _setAnonymousMode(String userId, bool v) async {
+    setState(() => _anonymousModeOverride = v);
+    try {
+      await ref.read(_userRepoProvider).setAnonymousMode(userId, v);
+      ref.invalidate(authNotifierProvider);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _anonymousModeOverride = null);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('設定の保存に失敗しました')));
+    }
+  }
+
+  Future<void> _setPrivate(String userId, bool v) async {
+    setState(() => _isPrivateOverride = v);
+    try {
+      await ref.read(_userRepoProvider).setPrivate(userId, v);
+      ref.invalidate(authNotifierProvider);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isPrivateOverride = null);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('設定の保存に失敗しました')));
+    }
+  }
 
   @override
   void initState() {
@@ -48,21 +75,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _loadPrefs() async {
-    await EncounterTestMode.load();
     final prefs = await SharedPreferences.getInstance();
     final bgEnabled = await BackgroundEncounterService.isEnabled();
+    // 保存されている設定値だけを見ていたため、OS側の設定で通知を切られても
+    // トグルはONのまま食い違っていた。実際のOS許可状態も確認し、既にOFFに
+    // なっているなら合わせてローカル設定もOFFにする。
+    var motivationEnabled = prefs.getBool(_kMotivationKey) ?? false;
+    if (motivationEnabled) {
+      final hasPermission = await NotificationService().hasPermission();
+      if (!hasPermission) {
+        motivationEnabled = false;
+        await prefs.setBool(_kMotivationKey, false);
+      }
+    }
     setState(() {
-      _motivationEnabled = prefs.getBool(_kMotivationKey) ?? false;
+      _motivationEnabled = motivationEnabled;
       _quietEnabled = prefs.getBool(_kQuietKey) ?? true;
       _bgDetectionEnabled = bgEnabled;
-      _encounterTestModeEnabled = EncounterTestMode.localEnabled;
       _prefsLoaded = true;
     });
-  }
-
-  Future<void> _setEncounterTestMode(bool value) async {
-    setState(() => _encounterTestModeEnabled = value);
-    await EncounterTestMode.setLocalEnabled(value);
   }
 
   Future<void> _setMotivation(bool v) async {
@@ -75,9 +106,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    // ON したときに、明示的に通知許可を取る（拒否時は設定/誘導）
-    await NotificationService().initialize();
-    final granted = await NotificationService().requestPermission();
+    // ON したときに、明示的に通知許可を取る（拒否時は設定/誘導）。
+    // 権限リクエストが例外を投げる、あるいは端末依存の理由で応答が
+    // 返らないまま固まると、スイッチがONのまま何も起きなくなっていた
+    // （オンボーディングの許可ダイアログと同じ問題）ため、保護する。
+    var granted = false;
+    try {
+      await NotificationService().initialize();
+      granted = await NotificationService().requestPermission().timeout(
+            const Duration(seconds: 15),
+            onTimeout: () => false,
+          );
+    } catch (e) {
+      debugPrint('[Settings] motivation permission error: $e');
+    }
     if (!granted) {
       await prefs.setBool(_kMotivationKey, false);
       if (!mounted) return;
@@ -134,6 +176,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final userAsync = ref.watch(authNotifierProvider);
     final user = userAsync.value;
+    final anonymousMode =
+        _anonymousModeOverride ?? user?.anonymousMode ?? false;
+    final isPrivate = _isPrivateOverride ?? user?.isPrivate ?? true;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -155,27 +200,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             icon: Icons.person_off_outlined,
             title: '匿名モード',
             subtitle: 'ONにするとすれ違い対象から外れます',
-            value: user?.anonymousMode ?? false,
-            onChanged: user == null
-                ? null
-                : (v) async {
-                    final repo = ref.read(_userRepoProvider);
-                    await repo.setAnonymousMode(user.userId, v);
-                    ref.invalidate(authNotifierProvider);
-                  },
+            value: anonymousMode,
+            onChanged:
+                user == null ? null : (v) => _setAnonymousMode(user.userId, v),
           ),
           _SwitchTile(
             icon: Icons.lock_outline,
             title: '鍵アカウント',
-            subtitle: 'ON：相互いいねでSNS開示（従来）\nOFF：いいねされたら即SNS開示',
-            value: user?.isPrivate ?? true,
-            onChanged: user == null
-                ? null
-                : (v) async {
-                    final repo = ref.read(_userRepoProvider);
-                    await repo.setPrivate(user.userId, v);
-                    ref.invalidate(authNotifierProvider);
-                  },
+            subtitle: 'OFFに「公開」表示になり、相手からマッチしてなくても交流ができるようになります。',
+            value: isPrivate,
+            onChanged: user == null ? null : (v) => _setPrivate(user.userId, v),
           ),
           _SectionHeader('バックグラウンド検知'),
           // バックグラウンド検知の説明バナー
@@ -195,7 +229,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Expanded(
                     child: Text(
                       'バックグラウンド検知が有効です。アプリを閉じていてもすれ違いを記録します。',
-                      style: TextStyle(color: AppColors.success, fontSize: 12, height: 1.4),
+                      style: TextStyle(
+                          color: AppColors.success, fontSize: 12, height: 1.4),
                     ),
                   ),
                 ],
@@ -211,15 +246,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 : (v) async {
                     if (v) {
                       // 有効化前に警告ダイアログ
+                      // ここから先の権限リクエストが例外を投げる、あるいは
+                      // 端末依存の理由で応答が返らないまま固まると、スイッチが
+                      // 反応しなくなっていた（オンボーディングの許可ダイアログと
+                      // 同じ問題）ため、全体を保護する。
+                      try {
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (_) => AlertDialog(
                           backgroundColor: AppColors.surface,
                           title: const Row(
                             children: [
-                              Icon(Icons.battery_alert_outlined, color: AppColors.warning),
+                              Icon(Icons.battery_alert_outlined,
+                                  color: AppColors.warning),
                               SizedBox(width: 8),
-                              Text('バックグラウンド検知'),
+                              Expanded(child: Text('バックグラウンド検知')),
                             ],
                           ),
                           content: const Text(
@@ -244,10 +285,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       if (confirmed != true) return;
 
                       // 権限チェック（拒否時は設定/誘導）
-                      final locationPerm = await Geolocator.requestPermission();
+                      final locationPerm = await Geolocator.requestPermission()
+                          .timeout(const Duration(seconds: 15),
+                              onTimeout: () => LocationPermission.denied);
                       final isIOS = defaultTargetPlatform == TargetPlatform.iOS;
                       if (locationPerm == LocationPermission.denied ||
-                          locationPerm == LocationPermission.unableToDetermine) {
+                          locationPerm ==
+                              LocationPermission.unableToDetermine) {
                         await showDialog<void>(
                           context: context,
                           builder: (_) => AlertDialog(
@@ -324,8 +368,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       }
 
                       if (defaultTargetPlatform == TargetPlatform.android) {
-                        final btStatus =
-                            await Permission.bluetoothAdvertise.request();
+                        final btStatus = await Permission.bluetoothAdvertise
+                            .request()
+                            .timeout(const Duration(seconds: 15),
+                                onTimeout: () => PermissionStatus.denied);
                         if (!btStatus.isGranted) {
                           await showDialog<void>(
                             context: context,
@@ -352,6 +398,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           return;
                         }
                       }
+                      } catch (e) {
+                        debugPrint('[Settings] bg detection permission error: $e');
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('権限の確認に失敗しました。もう一度お試しください。')),
+                          );
+                        }
+                        return;
+                      }
                     }
                     setState(() => _bgDetectionEnabled = v);
                     await BackgroundEncounterService.setEnabled(
@@ -374,9 +429,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: '深夜通知オフ',
             subtitle: '23:00〜6:00 は通知しない',
             value: _quietEnabled,
-            onChanged: _prefsLoaded
-                ? (v) => _setQuiet(v, user?.userId)
-                : null,
+            onChanged: _prefsLoaded ? (v) => _setQuiet(v, user?.userId) : null,
           ),
           _SectionHeader('アカウント'),
           _SettingsTile(
@@ -397,6 +450,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           _SectionHeader('プラン・ストア'),
+          if (user != null)
+            _GearPlusTile(
+              plan: user.effectivePlan,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PlansScreen()),
+              ),
+            ),
           // アイテム購入
           _SettingsTile(
             icon: Icons.storefront_outlined,
@@ -440,7 +501,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: '特定商取引法に基づく表記',
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const CommercialTransactionScreen()),
+              MaterialPageRoute(
+                  builder: (_) => const CommercialTransactionScreen()),
+            ),
+          ),
+          _SettingsTile(
+            icon: Icons.outbond_outlined,
+            title: '外部送信について',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const ExternalTransmissionScreen()),
             ),
           ),
           _SettingsTile(
@@ -449,6 +520,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const ContactScreen()),
+            ),
+          ),
+          _SettingsTile(
+            icon: Icons.fact_check_outlined,
+            title: '個人情報に関する請求',
+            subtitle: '開示・訂正・利用停止・削除の請求',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const DataSubjectRequestScreen()),
             ),
           ),
           const SizedBox(height: 8),
@@ -505,7 +586,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     TextButton(
                       onPressed: () => Navigator.pop(context, true),
                       child: const Text('削除する',
-                          style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w700)),
+                          style: TextStyle(
+                              color: AppColors.error,
+                              fontWeight: FontWeight.w700)),
                     ),
                   ],
                 ),
@@ -513,7 +596,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               if (confirmed == true && user != null) {
                 try {
                   final repo = ref.read(authRepositoryProvider);
-                  await repo.deleteAccount();
+                  final verified = await repo.deleteAccount();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(verified
+                            ? 'アカウントを削除しました'
+                            : 'アカウントの削除処理を実行しました（完了確認は取得できませんでした）'),
+                      ),
+                    );
+                  }
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -524,20 +616,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               }
             },
           ),
-          // TestFlight 等: encounter_test_mode 付与ユーザー向け
-          if (user?.encounterTestMode == true && !kDebugMode) ...[
-            _SectionHeader('ベータテスト'),
-            SwitchListTile(
-              secondary: const Icon(Icons.swap_horiz, color: AppColors.warning),
-              title: const Text('連続すれ違いテストモード'),
-              subtitle: Text(
-                EncounterTestMode.statusLabel,
-                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-              ),
-              value: _encounterTestModeEnabled,
-              onChanged: _setEncounterTestMode,
-            ),
-          ],
           // デバッグ専用メニュー（デバッグビルドのみ表示）
           if (kDebugMode) ...[
             _SectionHeader('開発・テスト'),
@@ -557,7 +635,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
   }
-
 }
 
 class _SectionHeader extends StatelessWidget {
@@ -602,14 +679,18 @@ class _SettingsTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-      leading: Icon(icon, color: iconColor ?? AppColors.textSecondary, size: 22),
+      leading:
+          Icon(icon, color: iconColor ?? AppColors.textSecondary, size: 22),
       title: Text(title,
-          style: TextStyle(color: titleColor ?? AppColors.textPrimary, fontSize: 15)),
+          style: TextStyle(
+              color: titleColor ?? AppColors.textPrimary, fontSize: 15)),
       subtitle: subtitle != null
-          ? Text(subtitle!, style: const TextStyle(color: AppColors.textMuted, fontSize: 12))
+          ? Text(subtitle!,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12))
           : null,
       trailing: onTap != null
-          ? const Icon(Icons.chevron_right, color: AppColors.textMuted, size: 18)
+          ? const Icon(Icons.chevron_right,
+              color: AppColors.textMuted, size: 18)
           : null,
       onTap: onTap,
     );
@@ -636,9 +717,11 @@ class _SwitchTile extends StatelessWidget {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
       leading: Icon(icon, color: AppColors.textSecondary, size: 22),
-      title: Text(title, style: const TextStyle(color: AppColors.textPrimary, fontSize: 15)),
+      title: Text(title,
+          style: const TextStyle(color: AppColors.textPrimary, fontSize: 15)),
       subtitle: subtitle != null
-          ? Text(subtitle!, style: const TextStyle(color: AppColors.textMuted, fontSize: 12))
+          ? Text(subtitle!,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12))
           : null,
       trailing: Switch(
         value: value,
@@ -650,49 +733,42 @@ class _SwitchTile extends StatelessWidget {
 }
 
 class _GearPlusTile extends StatelessWidget {
-  final bool isPremium;
+  final String plan;
   final VoidCallback onTap;
 
-  const _GearPlusTile({required this.isPremium, required this.onTap});
+  const _GearPlusTile({required this.plan, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    final (title, subtitle, accent) = switch (plan) {
+      'gear_r' => ('Gear R 加入中', '認証バッジ・すべての特典', const Color(0xFF6C63FF)),
+      'gear_plus' => ('Gear+ 加入中', 'いいね無制限・履歴7日間', const Color(0xFFFFD700)),
+      'pit_in' => ('ピットイン加入中', '毎月ニトロ1個＋渋！10個をお届け', const Color(0xFFFF8C00)),
+      _ => ('Gear+ にアップグレード', '月額¥500 · いいね無制限', AppColors.primary),
+    };
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: isPremium
-                ? [const Color(0xFFFFD700).withOpacity(0.08), const Color(0xFFFFA500).withOpacity(0.08)]
-                : [AppColors.primary.withOpacity(0.08), AppColors.primary.withOpacity(0.04)],
+            colors: [accent.withOpacity(0.08), accent.withOpacity(0.04)],
           ),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isPremium ? const Color(0xFFFFD700) : AppColors.primary,
-            width: 1.5,
-          ),
+          border: Border.all(color: accent, width: 1.5),
         ),
         child: ListTile(
-          leading: Icon(
-            Icons.workspace_premium,
-            color: isPremium ? const Color(0xFFFFD700) : AppColors.primary,
-          ),
+          leading: Icon(Icons.workspace_premium, color: accent),
           title: Text(
-            isPremium ? 'Gear+ 加入中' : 'Gear+ にアップグレード',
-            style: TextStyle(
-              color: isPremium ? const Color(0xFFFFD700) : AppColors.primary,
-              fontWeight: FontWeight.w700,
-            ),
+            title,
+            style: TextStyle(color: accent, fontWeight: FontWeight.w700),
           ),
           subtitle: Text(
-            isPremium ? 'いいね無制限・履歴7日間' : '月額¥500 · いいね無制限',
+            subtitle,
             style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
           ),
-          trailing: Icon(
-            Icons.chevron_right,
-            color: isPremium ? const Color(0xFFFFD700) : AppColors.primary,
-          ),
+          trailing: Icon(Icons.chevron_right, color: accent),
         ),
       ),
     );

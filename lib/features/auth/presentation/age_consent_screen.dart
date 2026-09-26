@@ -9,7 +9,7 @@ import 'auth_provider.dart';
 const String kTermsVersion = '1.0';
 
 /// 年齢確認＋規約同意のゲート画面。
-/// - 18歳未満は利用不可
+/// - 16歳未満は利用不可
 /// - 利用規約・プライバシーポリシーへの同意を取得・記録
 /// - 通報により停止されたユーザーには停止画面を表示
 class AgeConsentScreen extends ConsumerStatefulWidget {
@@ -120,18 +120,21 @@ class _AgeConsentScreenState extends ConsumerState<AgeConsentScreen> {
               const SizedBox(height: 8),
               const Text(
                 '安全にご利用いただくため、年齢確認と規約への同意をお願いします。',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.6),
+                style: TextStyle(
+                    color: AppColors.textSecondary, fontSize: 14, height: 1.6),
               ),
               const SizedBox(height: 28),
 
               // 生年月日
-              const Text('生年月日', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+              const Text('生年月日',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
               const SizedBox(height: 8),
               InkWell(
                 onTap: _submitting ? null : _pickBirthDate,
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   decoration: BoxDecoration(
                     color: AppColors.surfaceCard,
                     borderRadius: BorderRadius.circular(12),
@@ -139,7 +142,8 @@ class _AgeConsentScreenState extends ConsumerState<AgeConsentScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.cake_outlined, size: 20, color: AppColors.textMuted),
+                      const Icon(Icons.cake_outlined,
+                          size: 20, color: AppColors.textMuted),
                       const SizedBox(width: 12),
                       Text(
                         birth == null
@@ -180,17 +184,28 @@ class _AgeConsentScreenState extends ConsumerState<AgeConsentScreen> {
                 child: Wrap(
                   children: [
                     TextButton(
-                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
-                      onPressed: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const TermsScreen())),
+                      style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0)),
+                      onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const TermsScreen())),
                       child: const Text('利用規約', style: TextStyle(fontSize: 13)),
                     ),
-                    const Text('  ・  ', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                    const Text('  ・  ',
+                        style: TextStyle(
+                            color: AppColors.textMuted, fontSize: 13)),
                     TextButton(
-                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
-                      onPressed: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen())),
-                      child: const Text('プライバシーポリシー', style: TextStyle(fontSize: 13)),
+                      style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0)),
+                      onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const PrivacyPolicyScreen())),
+                      child: const Text('プライバシーポリシー',
+                          style: TextStyle(fontSize: 13)),
                     ),
                   ],
                 ),
@@ -198,7 +213,9 @@ class _AgeConsentScreenState extends ConsumerState<AgeConsentScreen> {
 
               if (_error != null) ...[
                 const SizedBox(height: 12),
-                Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
+                Text(_error!,
+                    style:
+                        const TextStyle(color: AppColors.error, fontSize: 13)),
               ],
 
               const SizedBox(height: 28),
@@ -211,7 +228,8 @@ class _AgeConsentScreenState extends ConsumerState<AgeConsentScreen> {
                       ? const SizedBox(
                           width: 22,
                           height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
                         )
                       : const Text('同意して始める'),
                 ),
@@ -223,7 +241,8 @@ class _AgeConsentScreenState extends ConsumerState<AgeConsentScreen> {
                       ? null
                       : () => ref.read(authNotifierProvider.notifier).signOut(),
                   child: const Text('ログアウト',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                      style:
+                          TextStyle(color: AppColors.textMuted, fontSize: 13)),
                 ),
               ),
             ],
@@ -264,7 +283,8 @@ class _SuspendedView extends StatelessWidget {
               const Text(
                 '複数の通報により、このアカウントの利用を一時停止しています。'
                 '誤りと思われる場合は、お問い合わせよりご連絡ください。',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.7),
+                style: TextStyle(
+                    color: AppColors.textSecondary, fontSize: 14, height: 1.7),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 28),

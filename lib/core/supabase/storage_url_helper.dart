@@ -11,7 +11,14 @@ class StorageRef {
 class StorageUrlHelper {
   StorageUrlHelper._();
 
-  static const _buckets = ['vehicle-photos', 'profile-photos'];
+  static const _buckets = [
+    'vehicle-photos',
+    'profile-photos',
+    'chat-photos',
+    'board-photos',
+    'group-photos',
+    'group-chat-photos',
+  ];
   static final _cache = <String, _CachedSigned>{};
 
   /// アップロード後に DB へ保存する形式
@@ -57,8 +64,7 @@ class StorageUrlHelper {
     return null;
   }
 
-  static bool isStorageReference(String value) =>
-      parseStored(value) != null;
+  static bool isStorageReference(String value) => parseStored(value) != null;
 
   static Future<String> resolve(
     String stored, {
@@ -70,7 +76,8 @@ class StorageUrlHelper {
     final cacheKey = '${ref.bucket}/${ref.path}';
     final cached = _cache[cacheKey];
     if (cached != null &&
-        cached.expiresAt.isAfter(DateTime.now().add(const Duration(minutes: 5)))) {
+        cached.expiresAt
+            .isAfter(DateTime.now().add(const Duration(minutes: 5)))) {
       return cached.url;
     }
 

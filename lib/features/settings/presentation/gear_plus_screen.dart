@@ -19,7 +19,8 @@ class _GearPlusScreenState extends ConsumerState<GearPlusScreen> {
 
   Future<void> _purchase() async {
     final wasIntroEligible =
-        ref.read(authNotifierProvider).value?.shouldPromptGearPlusTrial ?? false;
+        ref.read(authNotifierProvider).value?.shouldPromptGearPlusTrial ??
+            false;
     setState(() => _loading = true);
     try {
       final info = await RevenueCatConfig.purchaseSubscription(
@@ -43,8 +44,16 @@ class _GearPlusScreenState extends ConsumerState<GearPlusScreen> {
 
       final user = ref.read(authNotifierProvider).value;
       if (user != null) {
-        await SubscriptionSync.applyPurchase(user.userId, info);
-        await ref.read(authNotifierProvider.notifier).build();
+        await SubscriptionSync.applyPurchase(
+          user.userId,
+          info,
+          productId: AppConstants.gearPlusProductId,
+        );
+        // notifier.build()を直接呼んでも、Riverpodの正規のstate更新経路を
+        // 通らないためUIには反映されず、build()内で登録される
+        // authStateChangesの購読リスナーだけが呼ぶたびに増えていた。
+        // 正しく再取得・再反映させるにはinvalidateを使う。
+        ref.invalidate(authNotifierProvider);
       }
 
       if (mounted) {
@@ -73,13 +82,21 @@ class _GearPlusScreenState extends ConsumerState<GearPlusScreen> {
     setState(() => _loading = true);
     try {
       final info = await RevenueCatConfig.restorePurchases();
-      final active = info?.entitlements.active.containsKey('gear_plus') ?? false;
+      // gear_plusしか見ていなかったため、Gear R加入者がここから復元すると
+      // 「復元できる購入が見つかりませんでした」と表示されてしまっていた。
+      final active = info != null &&
+          (info.entitlements.active.containsKey('gear_plus') ||
+              info.entitlements.active.containsKey('gear_r'));
 
       if (active) {
         final user = ref.read(authNotifierProvider).value;
-        if (user != null && info != null) {
+        if (user != null) {
           await SubscriptionSync.applyPurchase(user.userId, info);
-          await ref.read(authNotifierProvider.notifier).build();
+          // notifier.build()を直接呼んでも、Riverpodの正規のstate更新経路を
+          // 通らないためUIには反映されず、build()内で登録される
+          // authStateChangesの購読リスナーだけが呼ぶたびに増えていた。
+          // 正しく再取得・再反映させるにはinvalidateを使う。
+          ref.invalidate(authNotifierProvider);
         }
       }
 
@@ -128,27 +145,31 @@ class _GearPlusScreenState extends ConsumerState<GearPlusScreen> {
               ),
               child: Column(
                 children: [
-                  const Icon(Icons.workspace_premium, color: Colors.white, size: 48),
+                  const Icon(Icons.workspace_premium,
+                      color: Colors.white, size: 48),
                   const SizedBox(height: 12),
                   const Text(
                     'Gear+',
-                    style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: 2),
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     isPremium
                         ? (user?.isOnTrial == true ? '無料体験中' : '加入中')
                         : (showIntroOffer ? '初月無料 → 月額 ¥500' : '月額 ¥500'),
-                    style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 16),
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.9), fontSize: 16),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 28),
-
             _CompareTable(),
             const SizedBox(height: 28),
-
             if (!isPremium) ...[
               if (showIntroOffer) ...[
                 Container(
@@ -157,7 +178,8 @@ class _GearPlusScreenState extends ConsumerState<GearPlusScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.primary.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                    border:
+                        Border.all(color: AppColors.primary.withOpacity(0.3)),
                   ),
                   child: const Text(
                     '🎁 初回限定 1ヶ月無料\n'
@@ -189,22 +211,23 @@ class _GearPlusScreenState extends ConsumerState<GearPlusScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : Text(showIntroOffer
-                          ? '1ヶ月無料で試す'
-                          : 'Gear+ に加入する  ¥500/月'),
+                      : Text(
+                          showIntroOffer ? '1ヶ月無料で試す' : 'Gear+ に加入する  ¥500/月'),
                 ),
               ),
               const SizedBox(height: 12),
               TextButton(
                 onPressed: _loading ? null : _restore,
-                child: const Text('購入を復元', style: TextStyle(color: AppColors.textMuted)),
+                child: const Text('購入を復元',
+                    style: TextStyle(color: AppColors.textMuted)),
               ),
               const SizedBox(height: 16),
               Text(
                 showIntroOffer
                     ? '・初回のみ1ヶ月無料\n・無料期間終了後は解約しない限り月額¥500に自動更新\n・いつでもキャンセル可能\n・決済はApp Storeで管理されます'
                     : '・いつでもキャンセル可能\n・解約後は無料プランに降格\n・決済はApp Storeで管理されます',
-                style: const TextStyle(color: AppColors.textMuted, fontSize: 12, height: 1.8),
+                style: const TextStyle(
+                    color: AppColors.textMuted, fontSize: 12, height: 1.8),
                 textAlign: TextAlign.center,
               ),
             ] else
@@ -218,13 +241,14 @@ class _GearPlusScreenState extends ConsumerState<GearPlusScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.check_circle_outline, color: AppColors.success),
+                    const Icon(Icons.check_circle_outline,
+                        color: AppColors.success),
                     const SizedBox(width: 8),
                     Text(
-                      user?.isOnTrial == true
-                          ? 'Gear+ 無料体験中です'
-                          : 'Gear+ 加入中です',
-                      style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.w600),
+                      user?.isOnTrial == true ? 'Gear+ 無料体験中です' : 'Gear+ 加入中です',
+                      style: const TextStyle(
+                          color: AppColors.success,
+                          fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -258,20 +282,27 @@ class _CompareTable extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
               color: AppColors.background,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
             ),
             child: const Row(
               children: [
                 Expanded(flex: 3, child: SizedBox()),
                 Expanded(
                   flex: 2,
-                  child: Text('無料', textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+                  child: Text('無料',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w600)),
                 ),
                 Expanded(
                   flex: 2,
-                  child: Text('Gear+', textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700)),
+                  child: Text('Gear+',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w700)),
                 ),
               ],
             ),
@@ -283,14 +314,16 @@ class _CompareTable extends StatelessWidget {
             return Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   child: Row(
                     children: [
                       Expanded(
                         flex: 3,
                         child: Text(
                           row.$1,
-                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                          style: const TextStyle(
+                              color: AppColors.textPrimary, fontSize: 14),
                         ),
                       ),
                       Expanded(
@@ -298,7 +331,8 @@ class _CompareTable extends StatelessWidget {
                         child: Text(
                           row.$2,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                          style: const TextStyle(
+                              color: AppColors.textSecondary, fontSize: 13),
                         ),
                       ),
                       Expanded(
@@ -316,7 +350,8 @@ class _CompareTable extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (i < rows.length - 1) const Divider(height: 1, color: AppColors.border),
+                if (i < rows.length - 1)
+                  const Divider(height: 1, color: AppColors.border),
               ],
             );
           }),

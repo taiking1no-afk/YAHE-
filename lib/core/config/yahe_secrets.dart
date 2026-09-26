@@ -13,7 +13,8 @@ class YaheSecrets {
 
   // ── AdMob App ID（ca-app-pub-xxxx~yyyy）────────────────
   static const admobIosAppId = String.fromEnvironment('ADMOB_IOS_APP_ID');
-  static const admobAndroidAppId = String.fromEnvironment('ADMOB_ANDROID_APP_ID');
+  static const admobAndroidAppId =
+      String.fromEnvironment('ADMOB_ANDROID_APP_ID');
 
   // ── AdMob Banner Unit ID（ca-app-pub-xxxx/yyyy）────────
   static const admobIosBannerId = String.fromEnvironment('ADMOB_IOS_BANNER_ID');
@@ -30,7 +31,8 @@ class YaheSecrets {
   );
 
   static bool get hasAdMobIosAppId =>
-      admobIosAppId.startsWith('ca-app-pub-') && !admobIosAppId.contains('3940256099942544');
+      admobIosAppId.startsWith('ca-app-pub-') &&
+      !admobIosAppId.contains('3940256099942544');
 
   static bool get hasAdMobAndroidAppId =>
       admobAndroidAppId.startsWith('ca-app-pub-') &&

@@ -5,9 +5,85 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/supabase/supabase_config.dart';
 import '../../auth/presentation/auth_provider.dart';
+import '../../boards/presentation/board_detail_screen.dart';
+import '../../chat/presentation/chat_room_screen.dart';
+import '../../groups/presentation/group_detail_screen.dart';
+import '../../inbox/presentation/inbox_provider.dart';
+import '../../inbox/models/app_notification_model.dart';
+import '../../match/data/match_repository.dart';
 
 // ─── モデル ──────────────────────────────────────────────────
-enum NotifType { encounter, match, announcement }
+enum NotifType {
+  encounter,
+  match,
+  announcement,
+  likeReceived,
+  customInterest,
+  chatMessage,
+  groupInvite,
+  groupJoinRequest,
+  groupInviteDeclined,
+  boardInvite,
+  boardJoinRequest,
+  boardInviteDeclined,
+  levelUp,
+  groupOwnershipTransferred,
+}
+
+NotifType _notifTypeFromInbox(AppNotificationType type) => switch (type) {
+      AppNotificationType.match => NotifType.match,
+      AppNotificationType.likeReceived => NotifType.likeReceived,
+      AppNotificationType.customInterest => NotifType.customInterest,
+      AppNotificationType.chatMessage => NotifType.chatMessage,
+      AppNotificationType.groupInvite => NotifType.groupInvite,
+      AppNotificationType.groupJoinRequest => NotifType.groupJoinRequest,
+      AppNotificationType.groupInviteDeclined => NotifType.groupInviteDeclined,
+      AppNotificationType.boardInvite => NotifType.boardInvite,
+      AppNotificationType.boardJoinRequest => NotifType.boardJoinRequest,
+      AppNotificationType.boardInviteDeclined => NotifType.boardInviteDeclined,
+      AppNotificationType.levelUp => NotifType.levelUp,
+      AppNotificationType.groupOwnershipTransferred =>
+        NotifType.groupOwnershipTransferred,
+      AppNotificationType.unknown => NotifType.announcement,
+    };
+
+(String, String) _inboxTitleBody(AppNotificationModel n) => switch (n.type) {
+      AppNotificationType.likeReceived => switch (n.payload['boost_type']) {
+          'geki_shibu' => ('🌟 激渋！が届きました', '特別ないいねです。あなたの車に興味を持った人がいます'),
+          'shibu' => ('🔥 渋！が届きました', '特別ないいねです。あなたの車に興味を持った人がいます'),
+          _ => ('❤️ いいねが届きました', 'あなたの車に興味を持った人がいます'),
+        },
+      AppNotificationType.customInterest => (
+          '🔧 気になるカスタムがあります',
+          'あなたのカスタムに興味を持った人がいます'
+        ),
+      AppNotificationType.chatMessage => ('💬 新着メッセージ', 'チャットを確認しましょう'),
+      AppNotificationType.groupInvite => ('👥 グループに招待されました', 'グループの詳細を確認しましょう'),
+      AppNotificationType.groupJoinRequest => (
+          '👥 参加申請が届きました',
+          'グループの参加申請を確認しましょう'
+        ),
+      AppNotificationType.groupInviteDeclined => (
+          '👥 招待が辞退されました',
+          'グループへの招待が辞退されました'
+        ),
+      AppNotificationType.boardInvite => ('📋 掲示板に招待されました', '募集の詳細を確認しましょう'),
+      AppNotificationType.boardJoinRequest => (
+          '📋 参加申請が届きました',
+          '募集の参加申請を確認しましょう'
+        ),
+      AppNotificationType.boardInviteDeclined => (
+          '📋 招待が辞退されました',
+          '募集への招待が辞退されました'
+        ),
+      AppNotificationType.levelUp => ('⬆️ レベルアップ！', '相手との関係レベルが上がりました'),
+      AppNotificationType.groupOwnershipTransferred => (
+          '👑 オーナー権限を受け取りました',
+          '${n.payload['group_name'] as String? ?? 'グループ'}のオーナーになりました'
+        ),
+      AppNotificationType.match => ('🎉 マッチしました！', 'マッチタブから詳細を見てみましょう'),
+      AppNotificationType.unknown => ('お知らせ', ''),
+    };
 
 class NotifItem {
   final NotifType type;
@@ -15,6 +91,9 @@ class NotifItem {
   final String body;
   final DateTime time;
   final String? subLabel; // イベント種別など
+  final String? notificationId; // app_notifications 由来の場合のみ
+  final Map<String, dynamic> payload;
+  final String? relatedUserId;
 
   const NotifItem({
     required this.type,
@@ -22,11 +101,15 @@ class NotifItem {
     required this.body,
     required this.time,
     this.subLabel,
+    this.notificationId,
+    this.payload = const {},
+    this.relatedUserId,
   });
 }
 
 // ─── プロバイダー ─────────────────────────────────────────────
-final notificationsProvider = FutureProvider.autoDispose<List<NotifItem>>((ref) async {
+final notificationsProvider =
+    FutureProvider.autoDispose<List<NotifItem>>((ref) async {
   final user = ref.watch(authNotifierProvider).value;
   if (user == null) return [];
 
@@ -77,7 +160,7 @@ final notificationsProvider = FutureProvider.autoDispose<List<NotifItem>>((ref) 
   try {
     final announcements = await client
         .from('announcements')
-        .select()
+        .select('title, body, type, published_at, created_at')
         .eq('is_published', true)
         .order('published_at', ascending: false)
         .limit(10);
@@ -92,6 +175,26 @@ final notificationsProvider = FutureProvider.autoDispose<List<NotifItem>>((ref) 
         body: a['body'] as String,
         time: t,
         subLabel: _announcementLabel(a['type'] as String? ?? 'info'),
+      ));
+    }
+  } catch (_) {}
+
+  // ④ インボックス（いいね受信・気になるカスタム・チャット・グループ/掲示板招待等）
+  //   'match' は上の②で既に表示しているため、二重表示を避けるため除外する。
+  try {
+    final inboxItems =
+        await ref.watch(inboxRepositoryProvider).fetchNotifications();
+    for (final n in inboxItems) {
+      if (n.type == AppNotificationType.match) continue;
+      final (title, body) = _inboxTitleBody(n);
+      items.add(NotifItem(
+        type: _notifTypeFromInbox(n.type),
+        title: title,
+        body: body,
+        time: n.createdAt,
+        notificationId: n.notificationId,
+        payload: n.payload,
+        relatedUserId: n.relatedUserId,
       ));
     }
   } catch (_) {}
@@ -114,9 +217,13 @@ final unreadNotifCountProvider = FutureProvider<int>((ref) async {
 
   final prefs = await SharedPreferences.getInstance();
   final lastReadStr = prefs.getString('notif_last_read_${user.userId}');
+  // 未設定時（再インストール直後など）に固定の過去日時(2020年)へフォールバック
+  // すると、それまでの全期間のすれ違い・マッチが「未読」扱いになり、
+  // バッジに数百件と出てしまっていた。未設定時は「今」を起点にし、
+  // 過去の履歴を遡って未読扱いにしない。
   final lastRead = lastReadStr != null
-      ? DateTime.tryParse(lastReadStr) ?? DateTime(2020)
-      : DateTime(2020);
+      ? DateTime.tryParse(lastReadStr) ?? DateTime.now()
+      : DateTime.now();
 
   int count = 0;
   final client = SupabaseConfig.client;
@@ -148,6 +255,16 @@ final unreadNotifCountProvider = FutureProvider<int>((ref) async {
     count += (announcements as List).length;
   } catch (_) {}
 
+  try {
+    // inboxRepositoryProvider.fetchUnreadCount() を直接呼ぶのではなく
+    // unreadInboxCountProvider を watch することで、inboxRealtimeProvider が
+    // 新着通知を検知して unreadInboxCountProvider を invalidate するたび、
+    // このベルバッジ用カウントも連動して再計算されるようにする
+    // （以前はRealtime更新が一切この値に届かず、お知らせ画面を開くまで
+    // バッジが更新されなかった）。
+    count += await ref.watch(unreadInboxCountProvider.future);
+  } catch (_) {}
+
   return count;
 });
 
@@ -156,7 +273,8 @@ class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
-  ConsumerState<NotificationsScreen> createState() => _NotificationsScreenState();
+  ConsumerState<NotificationsScreen> createState() =>
+      _NotificationsScreenState();
 }
 
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
@@ -171,9 +289,24 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     final user = ref.read(authNotifierProvider).value;
     if (user == null) return;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-        'notif_last_read_${user.userId}', DateTime.now().toUtc().toIso8601String());
+    await prefs.setString('notif_last_read_${user.userId}',
+        DateTime.now().toUtc().toIso8601String());
+
+    // インボックス由来の通知も既読にする
+    try {
+      final repo = ref.read(inboxRepositoryProvider);
+      final items = await repo.fetchNotifications();
+      for (final n in items.where((n) => !n.isRead)) {
+        await repo.markAsRead(n.notificationId);
+      }
+    } catch (_) {}
+
+    // 未読が多いとここまでのawaitが長引く。その間に画面を閉じられていると
+    // dispose済みのrefを使うことになりStateErrorになるため、破棄後は何もしない。
+    if (!mounted) return;
     ref.invalidate(unreadNotifCountProvider);
+    ref.invalidate(unreadInboxCountProvider);
+    ref.invalidate(appNotificationsProvider);
   }
 
   @override
@@ -194,16 +327,21 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         ],
       ),
       body: notifsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+        loading: () => const Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
         error: (e, _) => Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.notifications_none, size: 56, color: AppColors.textMuted),
+              const Icon(Icons.notifications_none,
+                  size: 56, color: AppColors.textMuted),
               const SizedBox(height: 12),
-              const Text('読み込みに失敗しました', style: TextStyle(color: AppColors.textSecondary)),
+              const Text('読み込みに失敗しました',
+                  style: TextStyle(color: AppColors.textSecondary)),
               const SizedBox(height: 12),
-              TextButton(onPressed: () => ref.invalidate(notificationsProvider), child: const Text('再試行')),
+              TextButton(
+                  onPressed: () => ref.invalidate(notificationsProvider),
+                  child: const Text('再試行')),
             ],
           ),
         ),
@@ -213,11 +351,16 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.notifications_none, size: 64, color: AppColors.textMuted),
+                  Icon(Icons.notifications_none,
+                      size: 64, color: AppColors.textMuted),
                   SizedBox(height: 16),
-                  Text('お知らせはありません', style: TextStyle(color: AppColors.textSecondary, fontSize: 15)),
+                  Text('お知らせはありません',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 15)),
                   SizedBox(height: 8),
-                  Text('ドライブしてYAHEしよう！', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                  Text('ドライブしてYAHEしよう！',
+                      style:
+                          TextStyle(color: AppColors.textMuted, fontSize: 13)),
                 ],
               ),
             );
@@ -226,7 +369,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: items.length,
-            separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border, indent: 72),
+            separatorBuilder: (_, __) =>
+                const Divider(height: 1, color: AppColors.border, indent: 72),
             itemBuilder: (context, i) => _NotifTile(item: items[i]),
           );
         },
@@ -235,15 +379,75 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   }
 }
 
-class _NotifTile extends StatelessWidget {
+class _NotifTile extends ConsumerWidget {
   final NotifItem item;
   const _NotifTile({required this.item});
 
+  bool get _isTappable => switch (item.type) {
+        NotifType.groupInvite ||
+        NotifType.groupJoinRequest ||
+        NotifType.groupInviteDeclined =>
+          true,
+        NotifType.groupOwnershipTransferred => true,
+        NotifType.boardInvite ||
+        NotifType.boardJoinRequest ||
+        NotifType.boardInviteDeclined =>
+          true,
+        NotifType.chatMessage => true,
+        _ => false,
+      };
+
+  Future<void> _handleTap(BuildContext context, WidgetRef ref) async {
+    switch (item.type) {
+      case NotifType.groupInvite:
+      case NotifType.groupJoinRequest:
+      case NotifType.groupInviteDeclined:
+      case NotifType.groupOwnershipTransferred:
+        final groupId = item.payload['group_id'] as String?;
+        if (groupId == null) return;
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => GroupDetailScreen(groupId: groupId)));
+        return;
+      case NotifType.boardInvite:
+      case NotifType.boardJoinRequest:
+      case NotifType.boardInviteDeclined:
+        final postId = item.payload['post_id'] as String?;
+        if (postId == null) return;
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => BoardDetailScreen(postId: postId)));
+        return;
+      case NotifType.chatMessage:
+        final matchId = item.payload['match_id'] as String?;
+        final myId = ref.read(authNotifierProvider).value?.userId;
+        if (matchId == null || myId == null) return;
+        final match = await MatchRepository().fetchMatch(matchId, myId);
+        if (match?.otherUser == null || !context.mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatRoomScreen(
+              matchId: matchId,
+              otherUserId: match!.otherUser!.userId,
+              otherNickname: match.otherUser!.nickname,
+            ),
+          ),
+        );
+        return;
+      default:
+        return;
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final timeStr = _formatTime(item.time);
 
     return ListTile(
+      onTap: _isTappable ? () => _handleTap(context, ref) : null,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       leading: _Icon(type: item.type),
       title: Row(
@@ -264,7 +468,8 @@ class _NotifTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: _labelColor(item.type).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: _labelColor(item.type).withOpacity(0.4)),
+                border:
+                    Border.all(color: _labelColor(item.type).withOpacity(0.4)),
               ),
               child: Text(
                 item.subLabel!,
@@ -281,9 +486,12 @@ class _NotifTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 3),
-          Text(item.body, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          Text(item.body,
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 13)),
           const SizedBox(height: 4),
-          Text(timeStr, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+          Text(timeStr,
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
         ],
       ),
     );
@@ -293,6 +501,17 @@ class _NotifTile extends StatelessWidget {
         NotifType.encounter => AppColors.primary,
         NotifType.match => Colors.pink,
         NotifType.announcement => Colors.blue,
+        NotifType.likeReceived => Colors.pink,
+        NotifType.customInterest => AppColors.tagWheel,
+        NotifType.chatMessage => AppColors.primary,
+        NotifType.groupInvite => const Color(0xFF6C63FF),
+        NotifType.groupJoinRequest => const Color(0xFF6C63FF),
+        NotifType.groupInviteDeclined => AppColors.textMuted,
+        NotifType.boardInvite => AppColors.tagEngine,
+        NotifType.boardJoinRequest => AppColors.tagEngine,
+        NotifType.boardInviteDeclined => AppColors.textMuted,
+        NotifType.levelUp => AppColors.success,
+        NotifType.groupOwnershipTransferred => const Color(0xFF6C63FF),
       };
 
   String _formatTime(DateTime t) {
@@ -316,6 +535,35 @@ class _Icon extends StatelessWidget {
       NotifType.encounter => (Icons.swap_horiz, AppColors.primary),
       NotifType.match => (Icons.favorite, Colors.pink),
       NotifType.announcement => (Icons.campaign_outlined, Colors.blue),
+      NotifType.likeReceived => (Icons.favorite_border, Colors.pink),
+      NotifType.customInterest => (Icons.build_outlined, AppColors.tagWheel),
+      NotifType.chatMessage => (Icons.chat_bubble_outline, AppColors.primary),
+      NotifType.groupInvite => (
+          Icons.group_add_outlined,
+          const Color(0xFF6C63FF)
+        ),
+      NotifType.groupJoinRequest => (
+          Icons.group_outlined,
+          const Color(0xFF6C63FF)
+        ),
+      NotifType.groupInviteDeclined => (
+          Icons.person_remove_outlined,
+          AppColors.textMuted
+        ),
+      NotifType.boardInvite => (Icons.event_note_outlined, AppColors.tagEngine),
+      NotifType.boardJoinRequest => (
+          Icons.event_available_outlined,
+          AppColors.tagEngine
+        ),
+      NotifType.boardInviteDeclined => (
+          Icons.event_busy_outlined,
+          AppColors.textMuted
+        ),
+      NotifType.levelUp => (Icons.trending_up, AppColors.success),
+      NotifType.groupOwnershipTransferred => (
+          Icons.stars_outlined,
+          const Color(0xFF6C63FF)
+        ),
     };
     return Container(
       width: 44,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../constants/app_colors.dart';
+import '../supabase/supabase_config.dart';
 
 /// URL から表示用のドメイン（host）を取り出す。www. は除去する。
 String prettyHost(String url) {
@@ -10,8 +11,13 @@ String prettyHost(String url) {
 }
 
 /// 他ユーザーのSNSなど外部リンクを開く前に、移動先ドメインを明示して確認する。
-/// フィッシング・誤タップ対策。
-Future<void> openExternalLink(BuildContext context, String url) async {
+/// [ownerUserId] を渡すと、開封を Gear R 解析用に記録する（自分のリンクは渡さない）。
+Future<void> openExternalLink(
+  BuildContext context,
+  String url, {
+  String? ownerUserId,
+  String? platform,
+}) async {
   final uri = Uri.tryParse(url);
   if (uri == null) return;
   final host = prettyHost(url);
@@ -41,6 +47,16 @@ Future<void> openExternalLink(BuildContext context, String url) async {
   );
 
   if (ok == true) {
+    if (ownerUserId != null && ownerUserId.isNotEmpty) {
+      // 失敗してもリンク開封自体は続行
+      try {
+        await SupabaseConfig.client.rpc('record_sns_link_click', params: {
+          'p_owner_user_id': ownerUserId,
+          'p_platform': platform,
+          'p_url': url,
+        });
+      } catch (_) {}
+    }
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }

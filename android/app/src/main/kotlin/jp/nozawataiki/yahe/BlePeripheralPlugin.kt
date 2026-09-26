@@ -76,7 +76,13 @@ class BlePeripheralPlugin(private val context: Context) : MethodChannel.MethodCa
             return
         }
 
-        startGattServer()
+        // GATT サーバーは低速時のフォールバック用に過ぎないため、権限不足などで
+        // 失敗してもアドバタイズ本体（検知の主役）は継続させる
+        try {
+            startGattServer()
+        } catch (e: SecurityException) {
+            android.util.Log.w("BlePeripheralPlugin", "GATTサーバー起動失敗（権限不足の可能性）: $e")
+        }
 
         val settings = AdvertiseSettings.Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)

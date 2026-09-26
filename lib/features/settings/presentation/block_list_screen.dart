@@ -4,12 +4,11 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../shared/widgets/signed_storage_image.dart';
 import '../../auth/presentation/auth_provider.dart';
-import '../../home/presentation/home_provider.dart';
-import '../../likes/presentation/likes_screen.dart';
-import '../../match/presentation/match_screen.dart';
+import '../../../shared/providers/global_realtime_providers.dart';
 import '../../profile/data/user_repository.dart';
 
-final _blockListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final _blockListProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final user = ref.watch(authNotifierProvider).value;
   if (user == null) return [];
   final repo = UserRepository();
@@ -27,7 +26,8 @@ class BlockListScreen extends ConsumerWidget {
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('ブロックリスト')),
       body: blocksAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+        loading: () => const Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
         error: (e, _) => const Center(child: Text('読み込みに失敗しました')),
         data: (blocks) {
           if (blocks.isEmpty) {
@@ -37,7 +37,8 @@ class BlockListScreen extends ConsumerWidget {
                 children: [
                   Icon(Icons.block, size: 56, color: AppColors.textMuted),
                   SizedBox(height: 12),
-                  Text('ブロックしているユーザーはいません', style: TextStyle(color: AppColors.textSecondary)),
+                  Text('ブロックしているユーザーはいません',
+                      style: TextStyle(color: AppColors.textSecondary)),
                 ],
               ),
             );
@@ -47,18 +48,22 @@ class BlockListScreen extends ConsumerWidget {
             itemCount: blocks.length,
             itemBuilder: (context, i) {
               final block = blocks[i];
-              final date = DateFormat('yyyy/MM/dd').format(DateTime.parse(block['created_at']).toLocal());
+              final date = DateFormat('yyyy/MM/dd')
+                  .format(DateTime.parse(block['created_at']).toLocal());
               final nickname = block['nickname'] as String;
               final avatarUrl = block['avatar_url'] as String?;
               final letter = CircleAvatar(
                 backgroundColor: AppColors.border,
                 child: Text(
-                  nickname.isNotEmpty ? nickname.substring(0, 1).toUpperCase() : '?',
+                  nickname.isNotEmpty
+                      ? nickname.substring(0, 1).toUpperCase()
+                      : '?',
                   style: const TextStyle(color: AppColors.textSecondary),
                 ),
               );
               return ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
                 leading: (avatarUrl != null && avatarUrl.isNotEmpty)
                     ? ClipOval(
                         child: SignedStorageImage(
@@ -73,7 +78,8 @@ class BlockListScreen extends ConsumerWidget {
                 title: Text(block['nickname'] as String,
                     style: const TextStyle(color: AppColors.textPrimary)),
                 subtitle: Text('$date にブロック',
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                    style: const TextStyle(
+                        color: AppColors.textMuted, fontSize: 12)),
                 trailing: OutlinedButton(
                   onPressed: () async {
                     final confirmed = await showDialog<bool>(
@@ -83,19 +89,29 @@ class BlockListScreen extends ConsumerWidget {
                         title: const Text('ブロック解除'),
                         content: Text('${block['nickname']} のブロックを解除しますか？'),
                         actions: [
-                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('キャンセル')),
-                          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('解除')),
+                          TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('キャンセル')),
+                          ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('解除')),
                         ],
                       ),
                     );
                     if (confirmed == true) {
-                      await UserRepository().unblock(block['block_id'] as String);
-                      ref.invalidate(_blockListProvider);
-                      // 解除でいいね・マッチは再表示される（すれ違いは要再遭遇）
-                      ref.invalidate(matchesProvider);
-                      ref.invalidate(encountersProvider);
-                      ref.invalidate(sentLikesProvider);
-                      ref.invalidate(receivedLikesProvider);
+                      try {
+                        await UserRepository()
+                            .unblock(block['block_id'] as String);
+                        ref.invalidate(_blockListProvider);
+                        // 解除でいいね・マッチ・募集は再表示される（すれ違いは要再遭遇）
+                        invalidateAfterBlockChange(ref);
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('解除に失敗しました: $e')),
+                          );
+                        }
+                      }
                     }
                   },
                   style: OutlinedButton.styleFrom(

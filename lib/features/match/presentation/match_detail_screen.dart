@@ -6,12 +6,19 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/external_link.dart';
 import '../../../features/auth/presentation/auth_provider.dart';
 import '../../../features/profile/data/user_repository.dart';
+import '../../../shared/models/encounter_stats.dart';
+import '../../../shared/providers/global_realtime_providers.dart';
+import '../../chat/presentation/chat_room_screen.dart';
+import '../data/match_repository.dart';
+import '../../relationship/presentation/pair_level_badge.dart';
+import '../../../shared/widgets/invite_to_board_sheet.dart';
+import '../../../shared/widgets/public_badge.dart';
+import '../../../shared/widgets/report_dialog.dart';
 import '../../../shared/widgets/signed_storage_image.dart';
+import '../../../shared/widgets/user_groups_section.dart';
+import '../../../shared/widgets/user_upcoming_events_section.dart';
 import '../../../shared/widgets/vehicle_detail_card.dart';
-import '../../home/presentation/home_provider.dart';
-import '../../likes/presentation/likes_screen.dart';
 import '../models/match_model.dart';
-import 'match_screen.dart';
 
 class MatchDetailScreen extends ConsumerWidget {
   final MatchModel match;
@@ -23,6 +30,15 @@ class MatchDetailScreen extends ConsumerWidget {
     final vehicles = match.otherVehicles;
     final currentUser = ref.watch(authNotifierProvider).value;
     final otherUserId = match.otherUser?.userId ?? match.userBId;
+    // Gear Rの「インサイトアクティビティ」用に閲覧数を記録する（サーバー側で1日1回に重複排除）
+    UserRepository().recordProfileView(otherUserId);
+    final isBlocked =
+        (ref.watch(blockedUserIdsProvider).value ?? const <String>{})
+            .contains(otherUserId);
+    final isBlockedByOther =
+        ref.watch(blockedByUserProvider(otherUserId)).value ?? false;
+    final contactBlocked = isBlocked || isBlockedByOther;
+    final isDissolved = match.isDissolved;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -35,19 +51,33 @@ class MatchDetailScreen extends ConsumerWidget {
               color: AppColors.surface,
               onSelected: (value) async {
                 if (value == 'block') {
-                  await _showBlockDialog(context, ref, currentUser.userId, otherUserId);
+                  await _showBlockDialog(
+                      context, ref, currentUser.userId, otherUserId);
                 } else if (value == 'report') {
-                  await _showReportDialog(context, currentUser.userId, otherUserId);
+                  await showReportDialog(context,
+                      targetType: 'user', targetId: otherUserId);
+                } else if (value == 'dissolve') {
+                  await _showDissolveDialog(context, ref);
                 }
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(
-                  value: 'block',
+                PopupMenuItem(
+                  value: isBlocked ? null : 'block',
+                  enabled: !isBlocked,
                   child: Row(
                     children: [
-                      Icon(Icons.block, color: AppColors.error, size: 18),
-                      SizedBox(width: 10),
-                      Text('ブロック', style: TextStyle(color: AppColors.error)),
+                      Icon(Icons.block,
+                          color:
+                              isBlocked ? AppColors.textMuted : AppColors.error,
+                          size: 18),
+                      const SizedBox(width: 10),
+                      Text(
+                        isBlocked ? 'ブロック済み' : 'ブロック',
+                        style: TextStyle(
+                            color: isBlocked
+                                ? AppColors.textMuted
+                                : AppColors.error),
+                      ),
                     ],
                   ),
                 ),
@@ -55,12 +85,27 @@ class MatchDetailScreen extends ConsumerWidget {
                   value: 'report',
                   child: Row(
                     children: [
-                      Icon(Icons.flag_outlined, color: AppColors.textSecondary, size: 18),
+                      Icon(Icons.flag_outlined,
+                          color: AppColors.textSecondary, size: 18),
                       SizedBox(width: 10),
-                      Text('通報', style: TextStyle(color: AppColors.textSecondary)),
+                      Text('通報',
+                          style: TextStyle(color: AppColors.textSecondary)),
                     ],
                   ),
                 ),
+                if (!isDissolved)
+                  const PopupMenuItem(
+                    value: 'dissolve',
+                    child: Row(
+                      children: [
+                        Icon(Icons.heart_broken_outlined,
+                            color: AppColors.error, size: 18),
+                        SizedBox(width: 10),
+                        Text('マッチを解除',
+                            style: TextStyle(color: AppColors.error)),
+                      ],
+                    ),
+                  ),
               ],
             ),
         ],
@@ -76,39 +121,61 @@ class MatchDetailScreen extends ConsumerWidget {
               child: Column(
                 children: [
                   // アバター
-                  _Avatar(avatarUrl: user?.avatarUrl, nickname: user?.nickname ?? 'U'),
+                  _Avatar(
+                      avatarUrl: user?.avatarUrl,
+                      nickname: user?.nickname ?? 'U'),
                   const SizedBox(height: 14),
-                  Text(
-                    user?.nickname ?? '名無し',
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          user?.nickname ?? '名無し',
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (user?.isPrivate == false) ...[
+                        const SizedBox(width: 6),
+                        const PublicBadge(),
+                      ],
+                    ],
                   ),
                   if (user?.area != null) ...[
                     const SizedBox(height: 4),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.location_on_outlined, size: 14, color: AppColors.textMuted),
+                        const Icon(Icons.location_on_outlined,
+                            size: 14, color: AppColors.textMuted),
                         const SizedBox(width: 3),
-                        Text(user!.area!, style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                        Text(user!.area!,
+                            style: const TextStyle(
+                                color: AppColors.textMuted, fontSize: 13)),
                       ],
                     ),
                   ],
                   const SizedBox(height: 6),
                   // マッチ日時バッジ
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
                       color: AppColors.primary.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                      border:
+                          Border.all(color: AppColors.primary.withOpacity(0.3)),
                     ),
                     child: Text(
                       'マッチ日: ${DateFormat('yyyy年M月d日').format(match.matchedAt)}',
-                      style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600),
                     ),
                   ),
                   if (user?.comment != null) ...[
@@ -136,6 +203,189 @@ class MatchDetailScreen extends ConsumerWidget {
               ),
             ),
 
+            // ─── ヤエー人数（累計・本日）
+            if (user != null) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: _EncounterStatsSection(userId: user.userId),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // ─── マッチ解消状態の表示
+            if (isDissolved)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.textMuted.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.heart_broken_outlined,
+                          color: AppColors.textMuted, size: 18),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'マッチは解消されています。過去のメッセージのみ閲覧できます',
+                          style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // ─── ブロック状態の表示
+            if (contactBlocked)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.textMuted.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.block,
+                          color: AppColors.textMuted, size: 18),
+                      const SizedBox(width: 10),
+                      Text(
+                        isBlockedByOther ? 'ブロックされています' : 'ブロック中',
+                        style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            // ─── チャット
+            if (user != null) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatRoomScreen(
+                          matchId: match.matchId,
+                          otherUserId: user.userId,
+                          otherNickname: user.nickname,
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: const Text('チャットを始める'),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: (contactBlocked || isDissolved)
+                        ? null
+                        : () => showInviteToBoardSheet(context, ref,
+                            targetUserIds: [user.userId],
+                            chatMatchId: match.matchId),
+                    icon: const Icon(Icons.event_available_outlined, size: 18),
+                    label: const Text('ツーリング・イベントに誘う'),
+                  ),
+                ),
+              ),
+              if (currentUser != null) ...[
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: PairLevelBadge(
+                    myUserId: currentUser.userId,
+                    otherUserId: user.userId,
+                    otherNickname: user.nickname,
+                  ),
+                ),
+              ],
+              UserGroupsSection(userId: user.userId, showSearchLink: false),
+              UserUpcomingEventsSection(userId: user.userId),
+              const SizedBox(height: 12),
+            ],
+
+            // ─── 公開SNSリンク（Gear R限定・マッチ後は常に相手に公開される）
+            if (user?.publicSnsLink != null) ...[
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.public, size: 13, color: Color(0xFF6C63FF)),
+                        SizedBox(width: 4),
+                        Text('公開SNS',
+                            style: TextStyle(
+                                color: Color(0xFF6C63FF),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () => openExternalLink(
+                        context,
+                        user.publicSnsLink!.url,
+                        ownerUserId: otherUserId,
+                        platform: user.publicSnsLink!.platform,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                user!.publicSnsLink!.label?.isNotEmpty == true
+                                    ? user.publicSnsLink!.label!
+                                    : user.publicSnsLink!.url,
+                                style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const Icon(Icons.open_in_new,
+                                size: 14, color: AppColors.textMuted),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             // ─── SNSリンク
             if (user != null && user.snsLinks.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -144,17 +394,28 @@ class MatchDetailScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('SNS', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+                    const Text('SNS',
+                        style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600)),
                     const SizedBox(height: 8),
                     ...user.snsLinks.map((link) {
                       final platformLabel = AppConstants.snsPlatforms
-                          .firstWhere((p) => p['key'] == link.platform, orElse: () => {'label': 'SNS'})['label']!;
+                          .firstWhere((p) => p['key'] == link.platform,
+                              orElse: () => {'label': 'SNS'})['label']!;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: GestureDetector(
-                          onTap: () => openExternalLink(context, link.url),
+                          onTap: () => openExternalLink(
+                            context,
+                            link.url,
+                            ownerUserId: otherUserId,
+                            platform: link.platform,
+                          ),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 12),
                             decoration: BoxDecoration(
                               color: AppColors.surface,
                               borderRadius: BorderRadius.circular(10),
@@ -163,23 +424,32 @@ class MatchDetailScreen extends ConsumerWidget {
                             child: Row(
                               children: [
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
                                     color: AppColors.primary.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(platformLabel,
-                                      style: const TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w600)),
+                                      style: const TextStyle(
+                                          color: AppColors.primary,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600)),
                                 ),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
-                                    link.label.isNotEmpty ? link.label : link.url,
-                                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                                    link.label.isNotEmpty
+                                        ? link.label
+                                        : link.url,
+                                    style: const TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 13),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                const Icon(Icons.open_in_new, size: 14, color: AppColors.textMuted),
+                                const Icon(Icons.open_in_new,
+                                    size: 14, color: AppColors.textMuted),
                               ],
                             ),
                           ),
@@ -201,10 +471,16 @@ class MatchDetailScreen extends ConsumerWidget {
                   children: [
                     Text(
                       '愛車${vehicles.length > 1 ? ' (${vehicles.length}台)' : ''}',
-                      style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 8),
-                    ...vehicles.map((v) => VehicleDetailCard(vehicle: v)),
+                    ...vehicles.map((v) => VehicleDetailCard(
+                          vehicle: v,
+                          customInterestOwnerUserId: user?.userId,
+                        )),
                   ],
                 ),
               ),
@@ -216,7 +492,47 @@ class MatchDetailScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _showBlockDialog(BuildContext context, WidgetRef ref, String currentUserId, String otherUserId) async {
+  Future<void> _showDissolveDialog(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('マッチを解除しますか？'),
+        content: const Text(
+          '解除すると新しいメッセージは送れなくなりますが、これまでのチャット履歴は残ります。'
+          '再び相互にいいねすると、同じ相手と再マッチできます。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('キャンセル'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('解除する'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await MatchRepository().dissolveMatch(match.matchId);
+      if (!context.mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('マッチを解除しました')),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('エラーが発生しました')),
+      );
+    }
+  }
+
+  Future<void> _showBlockDialog(BuildContext context, WidgetRef ref,
+      String currentUserId, String otherUserId) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -240,10 +556,7 @@ class MatchDetailScreen extends ConsumerWidget {
       try {
         await UserRepository().block(currentUserId, otherUserId);
         // タイムライン各所から即時に消すため再取得を促す
-        ref.invalidate(matchesProvider);
-        ref.invalidate(encountersProvider);
-        ref.invalidate(sentLikesProvider);
-        ref.invalidate(receivedLikesProvider);
+        invalidateAfterBlockChange(ref);
         if (!context.mounted) return;
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -256,86 +569,6 @@ class MatchDetailScreen extends ConsumerWidget {
         );
       }
     }
-  }
-
-  Future<void> _showReportDialog(BuildContext context, String currentUserId, String otherUserId) async {
-    String? selectedCategory;
-    final detailController = TextEditingController();
-
-    final submitted = await showDialog<bool>(
-      context: context,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: const Text('通報'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('理由を選んでください', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
-              const SizedBox(height: 12),
-              ...{
-                'inappropriate_photo': '不適切な写真',
-                'impersonation': 'なりすまし',
-                'spam': 'スパム',
-                'other': 'その他',
-              }.entries.map((e) => RadioListTile<String>(
-                    value: e.key,
-                    groupValue: selectedCategory,
-                    title: Text(e.value, style: const TextStyle(fontSize: 14)),
-                    activeColor: AppColors.primary,
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                    onChanged: (v) => setState(() => selectedCategory = v),
-                  )),
-              const SizedBox(height: 8),
-              TextField(
-                controller: detailController,
-                decoration: const InputDecoration(
-                  hintText: '詳細（任意）',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-                maxLines: 2,
-                style: const TextStyle(fontSize: 13),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('キャンセル'),
-            ),
-            ElevatedButton(
-              onPressed: selectedCategory == null ? null : () => Navigator.pop(ctx, true),
-              child: const Text('送信'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (submitted == true && selectedCategory != null && context.mounted) {
-      try {
-        await UserRepository().report(
-          reporterId: currentUserId,
-          targetId: otherUserId,
-          category: selectedCategory!,
-          detail: detailController.text,
-        );
-        if (!context.mounted) return;
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('通報を送信しました。ありがとうございます。')),
-        );
-      } catch (_) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('エラーが発生しました')),
-        );
-      }
-    }
-    detailController.dispose();
   }
 }
 
@@ -366,7 +599,68 @@ class _Avatar extends StatelessWidget {
         backgroundColor: AppColors.primary.withOpacity(0.15),
         child: Text(
           nickname.isNotEmpty ? nickname.substring(0, 1).toUpperCase() : 'U',
-          style: const TextStyle(color: AppColors.primary, fontSize: 30, fontWeight: FontWeight.w900),
+          style: const TextStyle(
+              color: AppColors.primary,
+              fontSize: 30,
+              fontWeight: FontWeight.w900),
         ),
       );
+}
+
+// ─── ヤエー人数（累計・本日）
+class _EncounterStatsSection extends StatelessWidget {
+  final String userId;
+  const _EncounterStatsSection({required this.userId});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<EncounterStats>(
+      future: UserRepository().fetchEncounterStats(userId),
+      builder: (context, snapshot) {
+        final stats = snapshot.data;
+        if (stats == null) return const SizedBox.shrink();
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                  child: _StatItem(label: '累計ヤエー', value: stats.totalPeople)),
+              Container(width: 1, height: 28, color: AppColors.border),
+              Expanded(
+                  child: _StatItem(label: '今日のヤエー', value: stats.todayPeople)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _StatItem extends StatelessWidget {
+  final String label;
+  final int value;
+  const _StatItem({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          '$value人',
+          style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 2),
+        Text(label,
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+      ],
+    );
+  }
 }

@@ -31,4 +31,5 @@ class AppColors {
   static const Color tagEngine = Color(0xFFFF6B35);
   static const Color tagSound = Color(0xFFFFD166);
   static const Color tagWheel = Color(0xFF4ECDC4);
+  static const Color tagTire = Color(0xFF8D6E63);
 }

@@ -21,8 +21,7 @@ class AttService {
 
     // ダイアログ表示前に短く待つ（初回描画の安定待ち）
     await Future<void>.delayed(const Duration(milliseconds: 400));
-    final result =
-        await AppTrackingTransparency.requestTrackingAuthorization();
+    final result = await AppTrackingTransparency.requestTrackingAuthorization();
     debugPrint('[ATT] result: $result');
     return result;
   }

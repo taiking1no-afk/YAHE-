@@ -6,13 +6,14 @@ import '../../features/profile/data/user_repository.dart';
 import '../../features/vehicle/models/vehicle.dart';
 import '../../shared/models/user_model.dart';
 import '../../shared/models/encounter_stats.dart';
+import 'report_dialog.dart';
 import 'signed_storage_image.dart';
 import 'vehicle_detail_card.dart';
 import 'vehicle_photo_viewer.dart';
 
 /// YAHEタブ・いいねタブのタップ時に表示する限定プロフィール
-/// 表示内容：アイコン（車両写真）・名前（車種名）・愛車情報のみ
-/// ニックネーム・SNS・コメントは非表示（マッチ後のみ開示）
+/// 表示内容：愛車情報・ニックネーム・コメント（オーナー方針：段階1から表示可）
+/// SNSはマッチ後（または鍵なしでいいね済み）のみ開示
 class LimitedProfileSheet extends StatelessWidget {
   final Vehicle? vehicle;
   final List<Vehicle> otherVehicles;
@@ -20,9 +21,13 @@ class LimitedProfileSheet extends StatelessWidget {
   final bool iLiked;
   final bool isMatched;
   final VoidCallback? onLike;
+  final VoidCallback? onBoostLike;
   final String? otherUserId;
   final String? currentUserId;
+  final bool isBlocked;
+  final bool isBlockedByOther;
   final VoidCallback? onBlocked;
+  final Future<void> Function(BuildContext context)? onShare;
 
   const LimitedProfileSheet({
     super.key,
@@ -32,9 +37,13 @@ class LimitedProfileSheet extends StatelessWidget {
     required this.iLiked,
     required this.isMatched,
     this.onLike,
+    this.onBoostLike,
     this.otherUserId,
     this.currentUserId,
+    this.isBlocked = false,
+    this.isBlockedByOther = false,
     this.onBlocked,
+    this.onShare,
   });
 
   static Future<void> show(
@@ -45,9 +54,13 @@ class LimitedProfileSheet extends StatelessWidget {
     required bool iLiked,
     required bool isMatched,
     VoidCallback? onLike,
+    VoidCallback? onBoostLike,
     String? otherUserId,
     String? currentUserId,
+    bool isBlocked = false,
+    bool isBlockedByOther = false,
     VoidCallback? onBlocked,
+    Future<void> Function(BuildContext context)? onShare,
   }) {
     return Navigator.push(
       context,
@@ -60,9 +73,13 @@ class LimitedProfileSheet extends StatelessWidget {
           iLiked: iLiked,
           isMatched: isMatched,
           onLike: onLike,
+          onBoostLike: onBoostLike,
           otherUserId: otherUserId,
           currentUserId: currentUserId,
+          isBlocked: isBlocked,
+          isBlockedByOther: isBlockedByOther,
           onBlocked: onBlocked,
+          onShare: onShare,
         ),
       ),
     );
@@ -77,12 +94,20 @@ class LimitedProfileSheet extends StatelessWidget {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.background,
-        title: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        title: Text(title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         actions: [
+          if (onShare != null)
+            IconButton(
+              tooltip: 'SNSでシェア',
+              icon: const Icon(Icons.ios_share),
+              onPressed: () => onShare!(context),
+            ),
           if (canReport)
-            _ReportMenu(
+            ReportMenu(
               otherUserId: otherUserId!,
               currentUserId: currentUserId!,
+              isBlocked: isBlocked,
               onBlocked: onBlocked,
             ),
         ],
@@ -109,19 +134,24 @@ class LimitedProfileSheet extends StatelessWidget {
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    if (otherUser!.isVerified && otherUser!.verifiedLabel != null && otherUser!.verifiedLabel!.isNotEmpty) ...[
+                    if (otherUser!.isVerified &&
+                        otherUser!.verifiedLabel != null &&
+                        otherUser!.verifiedLabel!.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: const Color(0xFF6C63FF).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFF6C63FF).withOpacity(0.35)),
+                          border: Border.all(
+                              color: const Color(0xFF6C63FF).withOpacity(0.35)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.verified, color: Color(0xFF6C63FF), size: 16),
+                            const Icon(Icons.verified,
+                                color: Color(0xFF6C63FF), size: 16),
                             const SizedBox(width: 5),
                             Text(
                               otherUser!.verifiedLabel!,
@@ -145,7 +175,8 @@ class LimitedProfileSheet extends StatelessWidget {
                   ],
 
                   // 一言コメント
-                  if (otherUser?.comment != null && otherUser!.comment!.isNotEmpty) ...[
+                  if (otherUser?.comment != null &&
+                      otherUser!.comment!.isNotEmpty) ...[
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(14),
@@ -171,14 +202,20 @@ class LimitedProfileSheet extends StatelessWidget {
                   if (otherVehicles.isNotEmpty) ...[
                     const Text(
                       '愛車',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 10),
                     ...otherVehicles.map((v) => VehicleDetailCard(vehicle: v)),
                   ] else if (vehicle != null) ...[
                     const Text(
                       '愛車',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 10),
                     VehicleDetailCard(vehicle: vehicle!),
@@ -186,14 +223,50 @@ class LimitedProfileSheet extends StatelessWidget {
 
                   const SizedBox(height: 24),
 
+                  // 公開SNSリンク（Gear R限定・マッチ後のみ相手に表示される。
+                  // RLSがマッチ済み以外には行を返さないため未マッチ時はnullになる）
+                  if (otherUser?.publicSnsLink != null) ...[
+                    const Row(
+                      children: [
+                        Icon(Icons.public, size: 13, color: Color(0xFF6C63FF)),
+                        SizedBox(width: 4),
+                        Text(
+                          '公開SNS',
+                          style: TextStyle(
+                              color: Color(0xFF6C63FF),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    _SnsLinkRow(
+                      link: SnsLink(
+                        platform: otherUser!.publicSnsLink!.platform,
+                        url: otherUser!.publicSnsLink!.url,
+                        label: otherUser!.publicSnsLink!.label ?? '',
+                      ),
+                      ownerUserId: otherUserId,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
                   // SNS（開示が許可されている場合のみ snsLinks が入る）
                   if (otherUser != null && otherUser!.snsLinks.isNotEmpty) ...[
                     const Text(
                       'SNS',
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 10),
-                    ...otherUser!.snsLinks.map((link) => _SnsLinkRow(link: link)),
+                    ...otherUser!.snsLinks.map(
+                      (link) => _SnsLinkRow(
+                        link: link,
+                        ownerUserId: otherUserId,
+                      ),
+                    ),
                     const SizedBox(height: 16),
                   ]
                   // プライバシー案内（SNS未開示かつ未マッチのときのみ）
@@ -207,12 +280,16 @@ class LimitedProfileSheet extends StatelessWidget {
                       ),
                       child: const Row(
                         children: [
-                          Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted),
+                          Icon(Icons.lock_outline,
+                              size: 16, color: AppColors.textMuted),
                           SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              'SNSリンクはマッチング後に開示されます',
-                              style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.4),
+                              'マッチして交流を深めよう',
+                              style: TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontSize: 13,
+                                  height: 1.4),
                             ),
                           ),
                         ],
@@ -230,43 +307,106 @@ class LimitedProfileSheet extends StatelessWidget {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-          child: isMatched
+          child: (isBlocked || isBlockedByOther)
               ? Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.08),
+                    color: AppColors.textMuted.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                    border: Border.all(color: AppColors.border),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.favorite, color: AppColors.primary, size: 20),
-                      SizedBox(width: 8),
-                      Text('マッチ済み', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700, fontSize: 16)),
+                      const Icon(Icons.block,
+                          color: AppColors.textMuted, size: 20),
+                      const SizedBox(width: 8),
+                      Text(isBlockedByOther ? 'ブロックされています' : 'ブロック中',
+                          style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16)),
                     ],
                   ),
                 )
-              : iLiked
-                  ? OutlinedButton.icon(
-                      onPressed: null,
-                      icon: const Icon(Icons.favorite, size: 20),
-                      label: const Text('いいね済み', style: TextStyle(fontSize: 16)),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 52),
+              : isMatched
+                  ? Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color: AppColors.primary.withOpacity(0.3)),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.favorite,
+                              color: AppColors.primary, size: 20),
+                          SizedBox(width: 8),
+                          Text('マッチ済み',
+                              style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16)),
+                        ],
                       ),
                     )
-                  : ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        onLike?.call();
-                      },
-                      icon: const Icon(Icons.favorite_border, size: 20),
-                      label: const Text('いいねする', style: TextStyle(fontSize: 16)),
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 52),
-                      ),
-                    ),
+                  : iLiked
+                      ? OutlinedButton.icon(
+                          onPressed: null,
+                          icon: const Icon(Icons.favorite, size: 20),
+                          label: const Text('いいね済み',
+                              style: TextStyle(fontSize: 16)),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 52),
+                          ),
+                        )
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              '気になったらいいねしよう',
+                              style: TextStyle(
+                                  color: AppColors.textMuted, fontSize: 12),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      onLike?.call();
+                                    },
+                                    icon: const Icon(Icons.favorite_border,
+                                        size: 20),
+                                    label: const Text('いいねする',
+                                        style: TextStyle(fontSize: 16)),
+                                    style: ElevatedButton.styleFrom(
+                                      minimumSize: const Size(0, 52),
+                                    ),
+                                  ),
+                                ),
+                                if (onBoostLike != null) ...[
+                                  const SizedBox(width: 8),
+                                  OutlinedButton(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      onBoostLike?.call();
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      minimumSize: const Size(52, 52),
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    child: const Text('🔥',
+                                        style: TextStyle(fontSize: 20)),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
         ),
       ),
     );
@@ -294,9 +434,11 @@ class _EncounterStatsSection extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Expanded(child: _StatItem(label: '累計ヤエー', value: stats.totalPeople)),
+              Expanded(
+                  child: _StatItem(label: '累計ヤエー', value: stats.totalPeople)),
               Container(width: 1, height: 28, color: AppColors.border),
-              Expanded(child: _StatItem(label: '今日のヤエー', value: stats.todayPeople)),
+              Expanded(
+                  child: _StatItem(label: '今日のヤエー', value: stats.todayPeople)),
             ],
           ),
         );
@@ -325,7 +467,10 @@ class _StatItem extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -333,14 +478,16 @@ class _StatItem extends StatelessWidget {
 }
 
 // ブロック/通報メニュー
-class _ReportMenu extends StatelessWidget {
+class ReportMenu extends StatelessWidget {
   final String otherUserId;
   final String currentUserId;
+  final bool isBlocked;
   final VoidCallback? onBlocked;
 
-  const _ReportMenu({
+  const ReportMenu({
     required this.otherUserId,
     required this.currentUserId,
+    this.isBlocked = false,
     this.onBlocked,
   });
 
@@ -353,17 +500,25 @@ class _ReportMenu extends StatelessWidget {
         if (value == 'block') {
           await _showBlockDialog(context);
         } else if (value == 'report') {
-          await _showReportDialog(context);
+          await showReportDialog(context,
+              targetType: 'user', targetId: otherUserId);
         }
       },
       itemBuilder: (_) => [
-        const PopupMenuItem(
-          value: 'block',
+        PopupMenuItem(
+          value: isBlocked ? null : 'block',
+          enabled: !isBlocked,
           child: Row(
             children: [
-              Icon(Icons.block, color: AppColors.error, size: 18),
-              SizedBox(width: 10),
-              Text('ブロック', style: TextStyle(color: AppColors.error)),
+              Icon(Icons.block,
+                  color: isBlocked ? AppColors.textMuted : AppColors.error,
+                  size: 18),
+              const SizedBox(width: 10),
+              Text(
+                isBlocked ? 'ブロック済み' : 'ブロック',
+                style: TextStyle(
+                    color: isBlocked ? AppColors.textMuted : AppColors.error),
+              ),
             ],
           ),
         ),
@@ -371,7 +526,8 @@ class _ReportMenu extends StatelessWidget {
           value: 'report',
           child: Row(
             children: [
-              Icon(Icons.flag_outlined, color: AppColors.textSecondary, size: 18),
+              Icon(Icons.flag_outlined,
+                  color: AppColors.textSecondary, size: 18),
               SizedBox(width: 10),
               Text('通報', style: TextStyle(color: AppColors.textSecondary)),
             ],
@@ -418,102 +574,28 @@ class _ReportMenu extends StatelessWidget {
       }
     }
   }
-
-  Future<void> _showReportDialog(BuildContext context) async {
-    String? selectedCategory;
-    final detailController = TextEditingController();
-
-    final submitted = await showDialog<bool>(
-      context: context,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: const Text('通報'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('理由を選んでください', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
-              const SizedBox(height: 12),
-              ...{
-                'inappropriate_photo': '不適切な写真',
-                'impersonation': 'なりすまし',
-                'spam': 'スパム',
-                'other': 'その他',
-              }.entries.map((e) => RadioListTile<String>(
-                    value: e.key,
-                    groupValue: selectedCategory,
-                    title: Text(e.value, style: const TextStyle(fontSize: 14)),
-                    activeColor: AppColors.primary,
-                    contentPadding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                    onChanged: (v) => setState(() => selectedCategory = v),
-                  )),
-              const SizedBox(height: 8),
-              TextField(
-                controller: detailController,
-                decoration: const InputDecoration(
-                  hintText: '詳細（任意）',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-                maxLines: 2,
-                style: const TextStyle(fontSize: 13),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('キャンセル'),
-            ),
-            ElevatedButton(
-              onPressed: selectedCategory == null ? null : () => Navigator.pop(ctx, true),
-              child: const Text('送信'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (submitted == true && selectedCategory != null && context.mounted) {
-      try {
-        await UserRepository().report(
-          reporterId: currentUserId,
-          targetId: otherUserId,
-          category: selectedCategory!,
-          detail: detailController.text,
-        );
-        if (!context.mounted) return;
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('通報を送信しました。ありがとうございます。')),
-        );
-      } catch (_) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('エラーが発生しました')),
-        );
-      }
-    }
-    detailController.dispose();
-  }
 }
 
 // SNSリンク行（開示許可時のみ表示）
 class _SnsLinkRow extends StatelessWidget {
   final SnsLink link;
-  const _SnsLinkRow({required this.link});
+  final String? ownerUserId;
+  const _SnsLinkRow({required this.link, this.ownerUserId});
 
   @override
   Widget build(BuildContext context) {
-    final platformLabel = AppConstants.snsPlatforms
-        .firstWhere((p) => p['key'] == link.platform,
-            orElse: () => {'label': 'SNS'})['label']!;
+    final platformLabel = AppConstants.snsPlatforms.firstWhere(
+        (p) => p['key'] == link.platform,
+        orElse: () => {'label': 'SNS'})['label']!;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
-        onTap: () => openExternalLink(context, link.url),
+        onTap: () => openExternalLink(
+          context,
+          link.url,
+          ownerUserId: ownerUserId,
+          platform: link.platform,
+        ),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
@@ -538,12 +620,16 @@ class _SnsLinkRow extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  link.label.isNotEmpty ? '$platformLabel：${link.label}' : link.url,
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  link.label.isNotEmpty
+                      ? '$platformLabel：${link.label}'
+                      : link.url,
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const Icon(Icons.open_in_new, size: 14, color: AppColors.textMuted),
+              const Icon(Icons.open_in_new,
+                  size: 14, color: AppColors.textMuted),
             ],
           ),
         ),
@@ -552,84 +638,6 @@ class _SnsLinkRow extends StatelessWidget {
   }
 }
 
-// シート内の車両行
-class _SheetVehicleRow extends StatelessWidget {
-  final Vehicle vehicle;
-  const _SheetVehicleRow({required this.vehicle});
-
-  @override
-  Widget build(BuildContext context) {
-    final typeLabel = vehicle.vehicleType == VehicleType.bike ? '🏍' : '🚗';
-    final tags = vehicle.tags.take(3).toList();
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: vehicle.photos.isNotEmpty
-                ? SignedStorageImage(
-                    storedReference: vehicle.photos.first,
-                    width: 60,
-                    height: 44,
-                    fit: BoxFit.cover,
-                    placeholder: _placeholder(),
-                  )
-                : _placeholder(),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(typeLabel, style: const TextStyle(fontSize: 13)),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        vehicle.displayName,
-                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                if (tags.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Wrap(spacing: 4, runSpacing: 4, children: tags.map((t) => _SheetTag(t)).toList()),
-                ],
-                if (vehicle.customContent != null && vehicle.customContent!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(vehicle.customContent!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _placeholder() => Container(width: 60, height: 44, color: AppColors.surface,
-      child: const Icon(Icons.directions_car, color: AppColors.textMuted, size: 22));
-}
-
-class _SheetTag extends StatelessWidget {
-  final String label;
-  const _SheetTag(this.label);
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: AppColors.primary.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: AppColors.primary.withOpacity(0.25)),
-        ),
-        child: Text(label, style: const TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w600)),
-      );
-}
 
 class _VehiclePhoto extends StatelessWidget {
   final Vehicle? vehicle;
@@ -641,7 +649,8 @@ class _VehiclePhoto extends StatelessWidget {
     final photo = photos.firstOrNull;
     if (photo != null) {
       return GestureDetector(
-        onTap: () => VehiclePhotoViewer.show(context, photos: photos),
+        onTap: () => VehiclePhotoViewer.show(context,
+            photos: photos, ownerUserId: vehicle?.userId),
         child: SignedStorageImage(
           storedReference: photo,
           width: double.infinity,
@@ -658,7 +667,8 @@ class _VehiclePhoto extends StatelessWidget {
         height: 180,
         color: AppColors.border,
         child: const Center(
-          child: Icon(Icons.directions_car_outlined, color: AppColors.textMuted, size: 56),
+          child: Icon(Icons.directions_car_outlined,
+              color: AppColors.textMuted, size: 56),
         ),
       );
 }

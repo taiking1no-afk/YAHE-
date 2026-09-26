@@ -9,8 +9,8 @@ class AuthScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authNotifierProvider);
     final isSigningIn = ref.watch(signInInProgressProvider);
+    final signInError = ref.watch(signInErrorProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -32,26 +32,29 @@ class AuthScreen extends ConsumerWidget {
                 const SizedBox(height: 48),
                 _GoogleSignInButton(
                   enabled: !isSigningIn,
-                  onTap: () =>
-                      ref.read(authNotifierProvider.notifier).signInWithGoogle(),
+                  onTap: () => ref
+                      .read(authNotifierProvider.notifier)
+                      .signInWithGoogle(),
                 ),
                 const SizedBox(height: 12),
                 if (defaultTargetPlatform == TargetPlatform.iOS)
                   _AppleSignInButton(
                     enabled: !isSigningIn,
-                    onTap: () =>
-                        ref.read(authNotifierProvider.notifier).signInWithApple(),
+                    onTap: () => ref
+                        .read(authNotifierProvider.notifier)
+                        .signInWithApple(),
                   ),
                 if (isSigningIn) ...[
                   const SizedBox(height: 20),
                   const CircularProgressIndicator(color: AppColors.primary),
                 ],
-                if (authState.hasError && !isSigningIn)
+                if (signInError != null && !isSigningIn)
                   Padding(
                     padding: const EdgeInsets.only(top: 16),
                     child: Text(
-                      'ログインに失敗しました。もう一度お試しください。',
-                      style: const TextStyle(color: AppColors.error, fontSize: 13),
+                      signInError,
+                      style:
+                          const TextStyle(color: AppColors.error, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -144,7 +147,8 @@ class _GoogleSignInButton extends StatelessWidget {
         onPressed: enabled ? onTap : null,
         style: OutlinedButton.styleFrom(
           side: const BorderSide(color: AppColors.border),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           backgroundColor: AppColors.surfaceCard,
         ),
         child: Row(
@@ -206,7 +210,8 @@ class _AppleSignInButton extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.white,
           foregroundColor: Colors.black,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,

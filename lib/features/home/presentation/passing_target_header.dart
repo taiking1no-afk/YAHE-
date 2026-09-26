@@ -27,7 +27,8 @@ class PassingTargetHeader extends ConsumerWidget {
           child: SizedBox(
             width: 20,
             height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: AppColors.primary),
           ),
         ),
       ),
@@ -64,9 +65,7 @@ class PassingTargetHeader extends ConsumerWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          identity.isEmpty
-                              ? '愛車を登録してください'
-                              : target.shortLabel,
+                          identity.isEmpty ? '愛車を登録してください' : target.shortLabel,
                           style: TextStyle(
                             color: identity.isEmpty
                                 ? AppColors.textMuted
@@ -80,7 +79,8 @@ class PassingTargetHeader extends ConsumerWidget {
                   ),
                   if (identity.isNotEmpty) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
                         color: AppColors.background,
                         borderRadius: BorderRadius.circular(8),
@@ -130,7 +130,8 @@ class PassingTargetHeader extends ConsumerWidget {
     );
   }
 
-  void _showSelector(BuildContext context, WidgetRef ref, PassingTarget current) {
+  void _showSelector(
+      BuildContext context, WidgetRef ref, PassingTarget current) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surface,
@@ -162,12 +163,16 @@ class PassingTargetHeader extends ConsumerWidget {
                 const SizedBox(height: 6),
                 Text(
                   'あなたは「${identityLabel(identity)}」として検知されます',
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                  style:
+                      const TextStyle(color: AppColors.textMuted, fontSize: 12),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   identityDetail(identity),
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, height: 1.5),
+                  style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      height: 1.5),
                 ),
                 const SizedBox(height: 16),
                 ...PassingTarget.values.map(
@@ -176,7 +181,9 @@ class PassingTargetHeader extends ConsumerWidget {
                     isSelected: t == current,
                     onTap: () async {
                       Navigator.pop(ctx);
-                      await ref.read(passingTargetProvider.notifier).setTarget(t);
+                      await ref
+                          .read(passingTargetProvider.notifier)
+                          .setTarget(t);
                       ref.invalidate(encountersProvider);
                     },
                   ),
@@ -206,7 +213,9 @@ class _TargetOption extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: isSelected ? AppColors.primary.withOpacity(0.08) : AppColors.background,
+        color: isSelected
+            ? AppColors.primary.withOpacity(0.08)
+            : AppColors.background,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
@@ -230,7 +239,9 @@ class _TargetOption extends StatelessWidget {
                       Text(
                         target.label,
                         style: TextStyle(
-                          color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.textPrimary,
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                         ),
@@ -247,7 +258,8 @@ class _TargetOption extends StatelessWidget {
                   ),
                 ),
                 if (isSelected)
-                  const Icon(Icons.check_circle, color: AppColors.primary, size: 22),
+                  const Icon(Icons.check_circle,
+                      color: AppColors.primary, size: 22),
               ],
             ),
           ),

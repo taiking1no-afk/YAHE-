@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/focal_point.dart';
+import '../../../shared/widgets/public_badge.dart';
 import '../../../shared/widgets/signed_storage_image.dart';
 import '../../profile/data/user_repository.dart';
 import '../../vehicle/models/vehicle.dart';
@@ -23,7 +25,11 @@ class BoostBadge extends StatelessWidget {
           children: [
             Text(emoji, style: const TextStyle(fontSize: 10)),
             const SizedBox(width: 3),
-            Text(label, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+            Text(label,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700)),
           ],
         ),
       );
@@ -32,11 +38,15 @@ class BoostBadge extends StatelessWidget {
 class EncounterCard extends StatelessWidget {
   final Encounter encounter;
   final VoidCallback? onLike;
+  final VoidCallback? onBoostLike;
+  final Future<void> Function(BuildContext context)? onShare;
 
   const EncounterCard({
     super.key,
     required this.encounter,
     this.onLike,
+    this.onBoostLike,
+    this.onShare,
   });
 
   @override
@@ -50,128 +60,175 @@ class EncounterCard extends StatelessWidget {
     return _ProfileViewRecorder(
       viewedUserId: otherId,
       child: Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: encounter.isMatched
-              ? AppColors.primary
-              : encounter.isSameModel
-                  ? const Color(0xFFFFC107)
-                  : AppColors.border,
-          width: encounter.isMatched || encounter.isSameModel ? 1.5 : 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // メイン写真
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            child: _VehiclePhoto(photoUrl: primaryVehicle?.photos.firstOrNull),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: encounter.isMatched
+                ? AppColors.primary
+                : encounter.isSameModel
+                    ? const Color(0xFFFFC107)
+                    : AppColors.border,
+            width: encounter.isMatched || encounter.isSameModel ? 1.5 : 1,
           ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // メイン写真
+            ClipRRect(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
+              child:
+                  _VehiclePhoto(photoUrl: primaryVehicle?.photos.firstOrNull, focalX: primaryVehicle?.photoFocalX ?? 0.5, focalY: primaryVehicle?.photoFocalY ?? 0.5),
+            ),
 
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ニックネーム + いいね/マッチ
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // ニックネーム + 認証バッジ
-                          if (otherUser != null)
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ニックネーム + いいね/マッチ
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // ニックネーム + 認証バッジ
+                            if (otherUser != null)
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      otherUser.nickname,
+                                      style: const TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (otherUser.isVerified &&
+                                      otherUser.verifiedLabel != null &&
+                                      otherUser.verifiedLabel!.isNotEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    _VerifiedBadge(
+                                        label: otherUser.verifiedLabel!),
+                                  ],
+                                  if (!otherUser.isPrivate) ...[
+                                    const SizedBox(width: 6),
+                                    const PublicBadge(),
+                                  ],
+                                  if (encounter.isSameModel) ...[
+                                    const SizedBox(width: 6),
+                                    const _SameModelBadge(),
+                                  ],
+                                ],
+                              ),
+                            // 一言コメント
+                            if (otherUser?.comment != null &&
+                                otherUser!.comment!.isNotEmpty) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                '"${otherUser.comment!}"',
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 13,
+                                  fontStyle: FontStyle.italic,
+                                  height: 1.4,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                            const SizedBox(height: 6),
+                            // すれ違い時刻 + 回数バッジ
+                            // 「初めてのすれ違い」は「N回目」より文字数が多く、
+                            // 時刻テキストと合わせるとRowの幅からはみ出し、Flutterの
+                            // オーバーフロー警告（黄色と黒の縞模様）が表示されることが
+                            // あったため、時刻側を Flexible + 省略表示にして必ず収める。
                             Row(
                               children: [
                                 Flexible(
                                   child: Text(
-                                    otherUser.nickname,
-                                    style: const TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w800,
-                                    ),
+                                    '$timeStr にすれ違い',
                                     overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                    style: const TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ),
-                                if (otherUser.isVerified && otherUser.verifiedLabel != null && otherUser.verifiedLabel!.isNotEmpty) ...[
-                                  const SizedBox(width: 6),
-                                  _VerifiedBadge(label: otherUser.verifiedLabel!),
-                                ],
-                                if (encounter.isSameModel) ...[
-                                  const SizedBox(width: 6),
-                                  const _SameModelBadge(),
-                                ],
+                                const SizedBox(width: 6),
+                                if (encounter.occurrenceNumber > 1)
+                                  _RepeatBadge(
+                                      count: encounter.occurrenceNumber)
+                                else
+                                  const _FirstEncounterBadge(),
                               ],
                             ),
-                          // 一言コメント
-                          if (otherUser?.comment != null && otherUser!.comment!.isNotEmpty) ...[
-                            const SizedBox(height: 3),
-                            Text(
-                              '"${otherUser.comment!}"',
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 13,
-                                fontStyle: FontStyle.italic,
-                                height: 1.4,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                            const SizedBox(height: 4),
+                            // 記録の保持期限までの残り時間
+                            _ExpiryLabel(expiresAt: encounter.expiresAt),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (encounter.isMatched)
+                        _MatchBadge()
+                      else
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            BoostLikeButton(
+                              iLiked: encounter.iLiked,
+                              onTap: onBoostLike,
+                            ),
+                            const SizedBox(width: 8),
+                            _LikeButton(
+                              iLiked: encounter.iLiked,
+                              onTap: onLike,
                             ),
                           ],
-                          const SizedBox(height: 6),
-                          // すれ違い時刻 + 回数バッジ
-                          Row(
-                            children: [
-                              Text(
-                                '$timeStr にすれ違い',
-                                style: const TextStyle(
-                                  color: AppColors.textMuted,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              if (encounter.occurrenceNumber > 1) ...[
-                                const SizedBox(width: 6),
-                                _RepeatBadge(count: encounter.occurrenceNumber),
-                              ],
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          // 記録の保持期限までの残り時間
-                          _ExpiryLabel(expiresAt: encounter.expiresAt),
-                        ],
+                        ),
+                    ],
+                  ),
+
+                  // 愛車一覧（複数台）
+                  if (vehicles.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Divider(height: 1, color: AppColors.border),
+                    const SizedBox(height: 10),
+                    ...vehicles.map((v) => _VehicleRow(vehicle: v)),
+                  ],
+
+                  // 初めてのすれ違い・マッチ済みのときだけ表示するSNS共有導線
+                  if (onShare != null) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => onShare!(context),
+                        icon: const Icon(Icons.ios_share, size: 16),
+                        label: const Text('SNSでシェア'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(color: AppColors.primary),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    if (encounter.isMatched)
-                      _MatchBadge()
-                    else
-                      _LikeButton(
-                        iLiked: encounter.iLiked,
-                        onTap: onLike,
-                      ),
                   ],
-                ),
-
-                // 愛車一覧（複数台）
-                if (vehicles.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  const Divider(height: 1, color: AppColors.border),
-                  const SizedBox(height: 10),
-                  ...vehicles.map((v) => _VehicleRow(vehicle: v)),
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
     );
   }
 }
@@ -180,14 +237,19 @@ class EncounterCard extends StatelessWidget {
 class EncounterGridCard extends StatelessWidget {
   final Encounter encounter;
   final VoidCallback? onLike;
+  final VoidCallback? onBoostLike;
+  final Future<void> Function(BuildContext context)? onShare;
 
   const EncounterGridCard({
     super.key,
     required this.encounter,
     this.onLike,
+    this.onBoostLike,
+    this.onShare,
   });
 
-  Duration get _expiryRemaining => encounter.expiresAt.difference(DateTime.now());
+  Duration get _expiryRemaining =>
+      encounter.expiresAt.difference(DateTime.now());
 
   @override
   Widget build(BuildContext context) {
@@ -217,7 +279,7 @@ class EncounterGridCard extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                _VehiclePhoto(photoUrl: primaryVehicle?.photos.firstOrNull),
+                _VehiclePhoto(photoUrl: primaryVehicle?.photos.firstOrNull, focalX: primaryVehicle?.photoFocalX ?? 0.5, focalY: primaryVehicle?.photoFocalY ?? 0.5),
                 // 下部グラデーション + テキスト
                 Positioned(
                   left: 0,
@@ -250,14 +312,16 @@ class EncounterGridCard extends StatelessWidget {
                         if (primaryVehicle != null)
                           Text(
                             primaryVehicle.displayName,
-                            style: const TextStyle(color: Colors.white70, fontSize: 11),
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 11),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         if (!_expiryRemaining.isNegative)
                           Text(
-                            'あと${formatRemainingDuration(_expiryRemaining)}',
-                            style: const TextStyle(color: Colors.white54, fontSize: 10),
+                            '消えるまであと${formatRemainingDuration(_expiryRemaining)}',
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 10),
                           ),
                       ],
                     ),
@@ -269,13 +333,46 @@ class EncounterGridCard extends StatelessWidget {
                   right: 6,
                   child: encounter.isMatched
                       ? _MatchBadge()
-                      : _LikeButton(iLiked: encounter.iLiked, onTap: onLike, compact: true),
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            BoostLikeButton(
+                              iLiked: encounter.iLiked,
+                              onTap: onBoostLike,
+                              compact: true,
+                            ),
+                            const SizedBox(width: 6),
+                            _LikeButton(
+                              iLiked: encounter.iLiked,
+                              onTap: onLike,
+                              compact: true,
+                            ),
+                          ],
+                        ),
                 ),
-                if (encounter.occurrenceNumber > 1)
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: encounter.occurrenceNumber > 1
+                      ? _RepeatBadge(count: encounter.occurrenceNumber)
+                      : const _FirstEncounterBadge(),
+                ),
+                // 初めてのすれ違い・マッチ済みのときだけ表示するSNS共有ボタン
+                if (onShare != null)
                   Positioned(
-                    top: 6,
-                    left: 6,
-                    child: _RepeatBadge(count: encounter.occurrenceNumber),
+                    bottom: 6,
+                    right: 6,
+                    child: GestureDetector(
+                      onTap: () => onShare!(context),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: const BoxDecoration(
+                            color: Colors.black45, shape: BoxShape.circle),
+                        child: const Icon(Icons.ios_share,
+                            color: Colors.white, size: 16),
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -336,6 +433,8 @@ class _VehicleRow extends StatelessWidget {
                         width: 56,
                         height: 40,
                         fit: BoxFit.cover,
+                        alignment: focalAlignment(
+                            vehicle.photoFocalX, vehicle.photoFocalY),
                         placeholder: _photoPlaceholder(),
                       )
                     : _photoPlaceholder(),
@@ -374,7 +473,8 @@ class _VehicleRow extends StatelessWidget {
               ),
             ],
           ),
-          if (vehicle.customContent != null && vehicle.customContent!.isNotEmpty) ...[
+          if (vehicle.customContent != null &&
+              vehicle.customContent!.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               vehicle.customContent!,
@@ -396,7 +496,8 @@ class _VehicleRow extends StatelessWidget {
         width: 56,
         height: 40,
         color: AppColors.surface,
-        child: const Icon(Icons.directions_car, color: AppColors.textMuted, size: 20),
+        child: const Icon(Icons.directions_car,
+            color: AppColors.textMuted, size: 20),
       );
 }
 
@@ -425,7 +526,9 @@ class _Tag extends StatelessWidget {
 
 class _VehiclePhoto extends StatelessWidget {
   final String? photoUrl;
-  const _VehiclePhoto({this.photoUrl});
+  final double focalX;
+  final double focalY;
+  const _VehiclePhoto({this.photoUrl, this.focalX = 0.5, this.focalY = 0.5});
 
   @override
   Widget build(BuildContext context) {
@@ -434,7 +537,8 @@ class _VehiclePhoto extends StatelessWidget {
         height: 160,
         color: AppColors.surface,
         child: const Center(
-          child: Icon(Icons.directions_car, color: AppColors.textMuted, size: 48),
+          child:
+              Icon(Icons.directions_car, color: AppColors.textMuted, size: 48),
         ),
       );
     }
@@ -443,6 +547,7 @@ class _VehiclePhoto extends StatelessWidget {
       height: 160,
       width: double.infinity,
       fit: BoxFit.cover,
+      alignment: focalAlignment(focalX, focalY),
       placeholder: Container(height: 160, color: AppColors.shimmerBase),
     );
   }
@@ -465,7 +570,9 @@ class _LikeButton extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: iLiked ? AppColors.primary : (compact ? Colors.black45 : AppColors.surface),
+          color: iLiked
+              ? AppColors.primary
+              : (compact ? Colors.black45 : AppColors.surface),
           shape: BoxShape.circle,
           border: compact
               ? null
@@ -476,8 +583,43 @@ class _LikeButton extends StatelessWidget {
         ),
         child: Icon(
           iLiked ? Icons.favorite : Icons.favorite_border,
-          color: iLiked ? Colors.white : (compact ? Colors.white : AppColors.textMuted),
+          color: iLiked
+              ? Colors.white
+              : (compact ? Colors.white : AppColors.textMuted),
           size: compact ? 16 : 22,
+        ),
+      ),
+    );
+  }
+}
+
+/// 渋！/激渋！を消費して、いいねをブースト付きで送るボタン。
+/// いいねボタンの隣に配置する。
+class BoostLikeButton extends StatelessWidget {
+  final bool iLiked;
+  final VoidCallback? onTap;
+  final bool compact;
+
+  const BoostLikeButton(
+      {super.key, required this.iLiked, this.onTap, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final size = compact ? 32.0 : 52.0;
+    return GestureDetector(
+      onTap: iLiked ? null : onTap,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: compact ? Colors.black45 : AppColors.surface,
+          shape: BoxShape.circle,
+          border: compact
+              ? null
+              : Border.all(color: AppColors.border, width: 1.5),
+        ),
+        child: Center(
+          child: Text('🔥', style: TextStyle(fontSize: compact ? 14 : 20)),
         ),
       ),
     );
@@ -509,6 +651,30 @@ class _RepeatBadge extends StatelessWidget {
   }
 }
 
+class _FirstEncounterBadge extends StatelessWidget {
+  const _FirstEncounterBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.primary),
+      ),
+      child: const Text(
+        '初めてのすれ違い',
+        style: TextStyle(
+          color: AppColors.primary,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
 // 記録の保持期限までの残り時間（無料: 24時間 / サブスク: 7日 で自動削除される）
 class _ExpiryLabel extends StatelessWidget {
   final DateTime expiresAt;
@@ -524,7 +690,7 @@ class _ExpiryLabel extends StatelessWidget {
         const Icon(Icons.timer_outlined, size: 12, color: AppColors.textMuted),
         const SizedBox(width: 3),
         Text(
-          'あと${formatRemainingDuration(remaining)}で記録が消えます',
+          '記録が消えるまであと${formatRemainingDuration(remaining)}',
           style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
         ),
       ],

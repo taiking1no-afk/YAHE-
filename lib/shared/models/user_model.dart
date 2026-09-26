@@ -24,6 +24,30 @@ class SnsLink {
       };
 }
 
+/// プロフィールの公開SNSリンク（全ユーザー利用可。マッチ済みの相手にのみ
+/// 表示される。表示するかどうかは isVisible で本人が任意に切り替えられる）。
+/// 従来のSnsLink（マッチ後にチャットで個別に送るための非公開リンク）とは別物。
+class PublicSnsLink {
+  final String platform;
+  final String url;
+  final String? label;
+  final bool isVisible;
+
+  const PublicSnsLink({
+    required this.platform,
+    required this.url,
+    this.label,
+    this.isVisible = true,
+  });
+
+  factory PublicSnsLink.fromJson(Map<String, dynamic> json) => PublicSnsLink(
+        platform: json['platform'] as String,
+        url: json['url'] as String,
+        label: json['label'] as String?,
+        isVisible: json['is_visible'] as bool? ?? true,
+      );
+}
+
 class UserModel {
   final String userId;
   final String authId;
@@ -32,8 +56,11 @@ class UserModel {
   final String? comment;
   final String? avatarUrl;
   final List<SnsLink> snsLinks;
+  final bool snsVisibleToMatches; // マッチした相手にSNSリンクをプロフィール表示するか（本人設定）
+  final PublicSnsLink? publicSnsLink;
   final bool anonymousMode;
-  final String plan; // 'free' | 'pit_in' | 'gear_plus' | 'gear_r'（RevenueCat 購入プラン）
+  final String
+      plan; // 'free' | 'pit_in' | 'gear_plus' | 'gear_r'（RevenueCat 購入プラン）
   final DateTime? trialEndsAt; // Gear+ イントロ/無料期間の終了日時
   final DateTime? gearPlusTrialUsedAt; // 初回お試し利用済み
   final String? premiumOverridePlan; // 運営付与プラン
@@ -47,6 +74,8 @@ class UserModel {
   final bool isSuspended; // 通報により自動停止されたユーザー
   final PassingTarget passingTarget; // すれ違いたい相手の種別
   final bool encounterTestMode; // テスト時の1日制限緩和（Supabase側フラグ）
+  final double avatarFocalX; // アバター一覧表示時のトリミング焦点(0.0〜1.0、デフォルト0.5=中央)
+  final double avatarFocalY;
   final DateTime createdAt;
 
   const UserModel({
@@ -57,6 +86,8 @@ class UserModel {
     this.comment,
     this.avatarUrl,
     required this.snsLinks,
+    this.snsVisibleToMatches = false,
+    this.publicSnsLink,
     required this.anonymousMode,
     this.plan = 'free',
     this.trialEndsAt,
@@ -72,6 +103,8 @@ class UserModel {
     this.isSuspended = false,
     this.passingTarget = PassingTarget.both,
     this.encounterTestMode = false,
+    this.avatarFocalX = 0.5,
+    this.avatarFocalY = 0.5,
     required this.createdAt,
   });
 
@@ -105,7 +138,8 @@ class UserModel {
 
   /// 機能制限判定用（購入 / トライアル / 運営付与を統合）
   String get effectivePlan {
-    if (plan == 'gear_r' || (_overrideActive && premiumOverridePlan == 'gear_r')) {
+    if (plan == 'gear_r' ||
+        (_overrideActive && premiumOverridePlan == 'gear_r')) {
       return 'gear_r';
     }
     if (plan == 'gear_plus' ||
@@ -115,7 +149,8 @@ class UserModel {
     return 'free';
   }
 
-  bool get isGearPlus => effectivePlan == 'gear_plus' || effectivePlan == 'gear_r';
+  bool get isGearPlus =>
+      effectivePlan == 'gear_plus' || effectivePlan == 'gear_r';
   bool get isGearR => effectivePlan == 'gear_r';
   bool get isPremium => effectivePlan != 'free';
 
@@ -155,8 +190,11 @@ class UserModel {
             ? DateTime.tryParse(json['terms_agreed_at'] as String)?.toLocal()
             : null,
         isSuspended: json['is_suspended'] as bool? ?? false,
-        passingTarget: PassingTargetX.fromString(json['passing_target'] as String?),
+        passingTarget:
+            PassingTargetX.fromString(json['passing_target'] as String?),
         encounterTestMode: json['encounter_test_mode'] as bool? ?? false,
+        avatarFocalX: (json['avatar_focal_x'] as num?)?.toDouble() ?? 0.5,
+        avatarFocalY: (json['avatar_focal_y'] as num?)?.toDouble() ?? 0.5,
         createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
       );
 
@@ -166,6 +204,9 @@ class UserModel {
     String? comment,
     String? avatarUrl,
     List<SnsLink>? snsLinks,
+    bool? snsVisibleToMatches,
+    PublicSnsLink? publicSnsLink,
+    bool clearPublicSnsLink = false,
     bool? anonymousMode,
     String? plan,
     DateTime? trialEndsAt,
@@ -181,6 +222,8 @@ class UserModel {
     bool? isSuspended,
     PassingTarget? passingTarget,
     bool? encounterTestMode,
+    double? avatarFocalX,
+    double? avatarFocalY,
   }) =>
       UserModel(
         userId: userId,
@@ -190,6 +233,9 @@ class UserModel {
         comment: comment ?? this.comment,
         avatarUrl: avatarUrl ?? this.avatarUrl,
         snsLinks: snsLinks ?? this.snsLinks,
+        snsVisibleToMatches: snsVisibleToMatches ?? this.snsVisibleToMatches,
+        publicSnsLink:
+            clearPublicSnsLink ? null : (publicSnsLink ?? this.publicSnsLink),
         anonymousMode: anonymousMode ?? this.anonymousMode,
         plan: plan ?? this.plan,
         trialEndsAt: trialEndsAt ?? this.trialEndsAt,
@@ -207,6 +253,8 @@ class UserModel {
         isSuspended: isSuspended ?? this.isSuspended,
         passingTarget: passingTarget ?? this.passingTarget,
         encounterTestMode: encounterTestMode ?? this.encounterTestMode,
+        avatarFocalX: avatarFocalX ?? this.avatarFocalX,
+        avatarFocalY: avatarFocalY ?? this.avatarFocalY,
         createdAt: createdAt,
       );
 }

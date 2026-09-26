@@ -24,7 +24,9 @@ class ListGridLayoutNotifier extends FamilyNotifier<ListGridLayout, String> {
   }
 
   Future<void> toggle() async {
-    state = state == ListGridLayout.list ? ListGridLayout.grid : ListGridLayout.list;
+    state = state == ListGridLayout.list
+        ? ListGridLayout.grid
+        : ListGridLayout.list;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefKey, state.name);
   }

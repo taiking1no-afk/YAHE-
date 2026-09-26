@@ -6,7 +6,9 @@ import '../../../shared/widgets/signed_storage_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/image_crop_helper.dart';
 import '../../../shared/models/user_model.dart';
+import '../../../shared/widgets/focal_point_picker.dart';
 import '../../auth/presentation/auth_provider.dart';
 import '../data/user_repository.dart';
 
@@ -74,6 +76,9 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   final _commentCtrl = TextEditingController();
   final _badgeLabelCtrl = TextEditingController();
   List<SnsLink> _snsLinks = [];
+  bool _snsVisibleToMatches = false;
+  PublicSnsLink? _publicSnsLink;
+  bool _publicSnsLinkChanged = false;
   File? _newAvatarFile;
   bool _isSaving = false;
   final _picker = ImagePicker();
@@ -88,6 +93,8 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
       _commentCtrl.text = user.comment ?? '';
       _badgeLabelCtrl.text = user.verifiedLabel ?? '';
       _snsLinks = List.from(user.snsLinks);
+      _snsVisibleToMatches = user.snsVisibleToMatches;
+      _publicSnsLink = user.publicSnsLink;
     }
   }
 
@@ -103,17 +110,46 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
   Future<void> _pickAvatar() async {
     try {
       final xFile = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 80,
-        maxWidth: 400,   // アバターは小さめでOK
-        maxHeight: 400,
-      );
+          source: ImageSource.gallery, imageQuality: 90);
       if (xFile == null) return;
-      setState(() => _newAvatarFile = File(xFile.path));
+      if (!mounted) return;
+      final cropped = await cropSquareImage(context, xFile.path);
+      if (cropped == null) return;
+      setState(() => _newAvatarFile = cropped);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('写真の選択に失敗しました')));
+      }
+    }
+  }
+
+  Future<void> _adjustAvatarFocal() async {
+    final user = ref.read(authNotifierProvider).value;
+    if (user == null || user.avatarUrl == null || user.avatarUrl!.isEmpty) {
+      return;
+    }
+    final point = await pickFocalPoint(
+      context,
+      storedReference: user.avatarUrl!,
+      bucket: 'profile-photos',
+      initialX: user.avatarFocalX,
+      initialY: user.avatarFocalY,
+    );
+    if (point == null) return;
+    try {
+      await ref
+          .read(_userRepoProvider)
+          .updateAvatarFocal(user.userId, point.dx, point.dy);
+      ref.invalidate(authNotifierProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('表示位置を更新しました')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('更新に失敗しました')));
       }
     }
   }
@@ -167,6 +203,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
         comment: _commentCtrl.text.trim(),
         avatarUrl: avatarUrl,
         snsLinks: _snsLinks,
+        snsVisibleToMatches: _snsVisibleToMatches,
       );
 
       // 認証バッジラベルの保存（Gear Rユーザーのみ）
@@ -174,12 +211,23 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
         await repo.updateVerifiedLabel(user.userId, badgeText);
       }
 
+      // 公開SNSリンクの保存（変更があった場合のみ）
+      if (_publicSnsLinkChanged) {
+        await repo.setPublicSnsLink(
+          platform: _publicSnsLink?.platform ?? '',
+          url: _publicSnsLink?.url ?? '',
+          label: _publicSnsLink?.label,
+          visible: _publicSnsLink?.isVisible ?? true,
+        );
+      }
+
       ref.invalidate(authNotifierProvider);
       if (mounted) {
         if (avatarFailed) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('プロフィールを保存しました（画像のアップロードに失敗しました。Supabase Storage の設定を確認してください）'),
+              content: Text(
+                  'プロフィールを保存しました（画像のアップロードに失敗しました。Supabase Storage の設定を確認してください）'),
               duration: Duration(seconds: 5),
             ),
           );
@@ -214,10 +262,12 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.primary),
                   )
                 : const Text('保存',
-                    style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700)),
+                    style: TextStyle(
+                        color: AppColors.primary, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -235,6 +285,18 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
               nickname: ref.watch(authNotifierProvider).value?.nickname ?? '',
               onTap: _pickAvatar,
             ),
+            if (_newAvatarFile == null &&
+                (ref.watch(authNotifierProvider).value?.avatarUrl
+                        ?.isNotEmpty ??
+                    false))
+              Align(
+                alignment: Alignment.center,
+                child: TextButton.icon(
+                  onPressed: _adjustAvatarFocal,
+                  icon: const Icon(Icons.center_focus_strong, size: 16),
+                  label: const Text('一覧での表示位置を調整'),
+                ),
+              ),
             const SizedBox(height: 28),
             _SectionLabel('基本情報'),
             const SizedBox(height: 8),
@@ -262,16 +324,19 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
               if (_badgeLabelCtrl.text.trim().isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: const Color(0xFF6C63FF).withOpacity(0.08),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFF6C63FF).withOpacity(0.3)),
+                    border: Border.all(
+                        color: const Color(0xFF6C63FF).withOpacity(0.3)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.verified, color: Color(0xFF6C63FF), size: 16),
+                      const Icon(Icons.verified,
+                          color: Color(0xFF6C63FF), size: 16),
                       const SizedBox(width: 6),
                       Text(
                         _badgeLabelCtrl.text.trim(),
@@ -292,10 +357,117 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                 decoration: const InputDecoration(
                   hintText: '例：インフルエンサー、ユーチューバー、ショップ',
                   helperText: '空欄にするとバッジが非表示になります',
-                  helperStyle: TextStyle(color: AppColors.textMuted, fontSize: 11),
+                  helperStyle:
+                      TextStyle(color: AppColors.textMuted, fontSize: 11),
                 ),
               ),
             ],
+
+            const SizedBox(height: 28),
+            _SectionLabel('公開SNSリンク'),
+            const SizedBox(height: 4),
+            const Text(
+              'マッチした相手のプロフィールに表示されます。表示する/しないは後からいつでも切り替えられます。',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            if (_publicSnsLink == null)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: const Text(
+                  'まだ設定されていません',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+              )
+            else ...[
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: SwitchListTile(
+                  value: _publicSnsLink!.isVisible,
+                  onChanged: (v) => setState(() {
+                    _publicSnsLink = PublicSnsLink(
+                      platform: _publicSnsLink!.platform,
+                      url: _publicSnsLink!.url,
+                      label: _publicSnsLink!.label,
+                      isVisible: v,
+                    );
+                    _publicSnsLinkChanged = true;
+                  }),
+                  activeColor: AppColors.primary,
+                  title: const Text('マッチした相手に表示する',
+                      style:
+                          TextStyle(fontSize: 14, color: AppColors.textPrimary)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _publicSnsLink!.label?.isNotEmpty == true
+                                ? _publicSnsLink!.label!
+                                : _publicSnsLink!.url,
+                            style: const TextStyle(
+                                color: AppColors.textPrimary, fontSize: 13),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            _publicSnsLink!.url,
+                            style: const TextStyle(
+                                color: AppColors.textMuted, fontSize: 11),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close,
+                          size: 18, color: AppColors.textMuted),
+                      onPressed: () => setState(() {
+                        _publicSnsLink = null;
+                        _publicSnsLinkChanged = true;
+                      }),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => _showPublicSnsDialog(context),
+              icon: const Icon(Icons.add_link, size: 18),
+              label: Text(
+                  _publicSnsLink == null ? '公開SNSリンクを設定' : '公開SNSリンクを編集'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+                side: const BorderSide(color: AppColors.primary),
+                foregroundColor: AppColors.primary,
+              ),
+            ),
 
             const SizedBox(height: 28),
 
@@ -306,14 +478,37 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                 const SizedBox(width: 8),
                 Text(
                   '${_snsLinks.length}件',
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                  style:
+                      const TextStyle(color: AppColors.textMuted, fontSize: 12),
                 ),
               ],
             ),
             const SizedBox(height: 4),
             const Text(
-              'マッチング後に相手に公開されます',
+              '登録すると、マッチした相手のプロフィールに表示できます。',
               style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+
+            // マッチ相手への表示切り替え
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: SwitchListTile(
+                value: _snsVisibleToMatches,
+                onChanged: (v) => setState(() => _snsVisibleToMatches = v),
+                activeColor: AppColors.primary,
+                title: const Text('マッチした相手に表示する',
+                    style: TextStyle(fontSize: 14, color: AppColors.textPrimary)),
+                subtitle: const Text(
+                  'ONにすると、マッチした相手のプロフィール画面からSNSへ飛べるようになります',
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                ),
+              ),
             ),
             const SizedBox(height: 12),
 
@@ -352,11 +547,189 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                 foregroundColor: AppColors.primary,
               ),
             ),
+
             const SizedBox(height: 40),
           ],
         ),
       ),
     );
+  }
+
+  void _showPublicSnsDialog(BuildContext context) {
+    String selectedPlatform =
+        _publicSnsLink?.platform ?? AppConstants.snsPlatforms.first['key']!;
+    final inputCtrl = TextEditingController();
+    final labelCtrl = TextEditingController(text: _publicSnsLink?.label ?? '');
+
+    // 既存のURLからプレフィックス部分を除いた入力値を復元する
+    if (_publicSnsLink != null) {
+      final info = _platformInfo[selectedPlatform];
+      final url = _publicSnsLink!.url;
+      if (info != null &&
+          info.prefix.isNotEmpty &&
+          url.startsWith(info.prefix)) {
+        inputCtrl.text = url.substring(info.prefix.length);
+      } else {
+        inputCtrl.text = url;
+      }
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+            24, 24, 24, MediaQuery.of(ctx).viewInsets.bottom + 32),
+        child: StatefulBuilder(
+          builder: (ctx, setS) {
+            final info = _platformInfo[selectedPlatform]!;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '公開SNSリンクを設定',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('プラットフォーム',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: AppConstants.snsPlatforms.map((p) {
+                    final isSelected = selectedPlatform == p['key'];
+                    return GestureDetector(
+                      onTap: () {
+                        setS(() {
+                          selectedPlatform = p['key']!;
+                          inputCtrl.clear();
+                        });
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppColors.primary.withOpacity(0.1)
+                              : AppColors.background,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.border,
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                        ),
+                        child: Text(
+                          p['label']!,
+                          style: TextStyle(
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.textSecondary,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.normal,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  selectedPlatform == 'other' ? 'URL' : 'ユーザー名 / URL',
+                  style:
+                      const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: inputCtrl,
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  keyboardType: info.prefix.isEmpty
+                      ? TextInputType.url
+                      : TextInputType.text,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    hintText: info.prefix.isNotEmpty ? info.example : info.hint,
+                    prefixText: info.prefix.isNotEmpty ? info.prefix : null,
+                    prefixStyle: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text('表示名（任意）',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: labelCtrl,
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  decoration: const InputDecoration(
+                    hintText: '例：〇〇カスタムショップ',
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () {
+                    final input = inputCtrl.text.trim();
+                    if (input.isEmpty) return;
+                    // ユーザー名欄にフルURLを貼り付けるとプレフィックスが
+                    // 二重に付いてしまっていた不具合の修正（_showAddDialogと同様）。
+                    final looksLikeFullUrl = input.startsWith('http://') ||
+                        input.startsWith('https://');
+                    final url = (info.prefix.isNotEmpty && !looksLikeFullUrl)
+                        ? '${info.prefix}$input'
+                        : input;
+                    final uri = Uri.tryParse(url);
+                    final isValid = uri != null &&
+                        (uri.scheme == 'http' || uri.scheme == 'https') &&
+                        uri.host.isNotEmpty;
+                    if (!isValid) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                            content: Text('正しいURLを入力してください（例: https://...）')),
+                      );
+                      return;
+                    }
+                    setState(() {
+                      _publicSnsLink = PublicSnsLink(
+                        platform: selectedPlatform,
+                        url: url,
+                        label: labelCtrl.text.trim().isEmpty
+                            ? null
+                            : labelCtrl.text.trim(),
+                        isVisible: _publicSnsLink?.isVisible ?? true,
+                      );
+                      _publicSnsLinkChanged = true;
+                    });
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('設定する'),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+      // controllerはこのメソッドのローカル変数のためStateのdispose()では
+      // 破棄されず、シートを開くたびにリークしていた。閉じたタイミングで破棄する。
+    ).whenComplete(() {
+      inputCtrl.dispose();
+      labelCtrl.dispose();
+    });
   }
 
   void _showAddDialog(BuildContext context) {
@@ -456,9 +829,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                       : TextInputType.text,
                   textInputAction: TextInputAction.done,
                   decoration: InputDecoration(
-                    hintText: info.prefix.isNotEmpty
-                        ? info.example
-                        : info.hint,
+                    hintText: info.prefix.isNotEmpty ? info.example : info.hint,
                     prefixText: info.prefix.isNotEmpty ? info.prefix : null,
                     prefixStyle: const TextStyle(
                       color: AppColors.textMuted,
@@ -486,9 +857,29 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                   onPressed: () {
                     final input = inputCtrl.text.trim();
                     if (input.isEmpty) return;
-                    final url = info.prefix.isNotEmpty
+                    // ユーザー名欄にフルURLを貼り付けた場合、プレフィックスを
+                    // 二重に付けてしまう不具合があった
+                    // （例: https://www.instagram.com/https://www.instagram.com/xxx）。
+                    // 既にhttp(s)://で始まっていればプレフィックスは付けない。
+                    final looksLikeFullUrl = input.startsWith('http://') ||
+                        input.startsWith('https://');
+                    final url = (info.prefix.isNotEmpty && !looksLikeFullUrl)
                         ? '${info.prefix}$input'
                         : input;
+                    // 特に「その他URL」（prefix無し）は任意の文字列をそのまま
+                    // 保存できてしまい、表示側のlaunchUrlで例外になっていた。
+                    // http/https の有効なURLかを保存前に確認する。
+                    final uri = Uri.tryParse(url);
+                    final isValid = uri != null &&
+                        (uri.scheme == 'http' || uri.scheme == 'https') &&
+                        uri.host.isNotEmpty;
+                    if (!isValid) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                            content: Text('正しいURLを入力してください（例: https://...）')),
+                      );
+                      return;
+                    }
                     setState(() {
                       _snsLinks.add(SnsLink(
                         platform: selectedPlatform,
@@ -505,7 +896,12 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
           },
         ),
       ),
-    );
+      // controllerはこのメソッドのローカル変数のためStateのdispose()では
+      // 破棄されず、シートを開くたびにリークしていた。閉じたタイミングで破棄する。
+    ).whenComplete(() {
+      inputCtrl.dispose();
+      labelCtrl.dispose();
+    });
   }
 }
 
@@ -542,8 +938,7 @@ class _Field extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style:
-                  const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
           const SizedBox(height: 6),
           TextField(
             controller: controller,
@@ -563,9 +958,9 @@ class _SnsLinkTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final platformLabel = AppConstants.snsPlatforms
-        .firstWhere((p) => p['key'] == link.platform,
-            orElse: () => {'label': 'SNS'})['label']!;
+    final platformLabel = AppConstants.snsPlatforms.firstWhere(
+        (p) => p['key'] == link.platform,
+        orElse: () => {'label': 'SNS'})['label']!;
 
     final icon = switch (link.platform) {
       'instagram' => Icons.camera_alt_outlined,
@@ -583,8 +978,7 @@ class _SnsLinkTile extends StatelessWidget {
         border: Border.all(color: AppColors.border),
       ),
       child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
         leading: Container(
           width: 36,
           height: 36,
@@ -595,7 +989,9 @@ class _SnsLinkTile extends StatelessWidget {
           child: Icon(icon, size: 18, color: AppColors.primary),
         ),
         title: Text(
-          link.label.isNotEmpty ? '$platformLabel：${link.label}' : platformLabel,
+          link.label.isNotEmpty
+              ? '$platformLabel：${link.label}'
+              : platformLabel,
           style: const TextStyle(
               color: AppColors.textPrimary,
               fontSize: 14,
@@ -615,8 +1011,12 @@ class _SnsLinkTile extends StatelessWidget {
                   size: 18, color: AppColors.textMuted),
               onPressed: () async {
                 final uri = Uri.tryParse(link.url);
-                if (uri != null) {
+                if (uri == null) return;
+                try {
                   await launchUrl(uri, mode: LaunchMode.externalApplication);
+                } catch (_) {
+                  // 保存時バリデーション導入前に登録された不正なURLが
+                  // 残っている可能性があるため、開けなくても例外にしない。
                 }
               },
             ),
@@ -675,7 +1075,8 @@ class _AvatarPicker extends StatelessWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                 ),
-                child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                child:
+                    const Icon(Icons.camera_alt, size: 16, color: Colors.white),
               ),
             ),
           ],

@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -18,10 +21,25 @@ import '../../shared/widgets/main_scaffold.dart';
 // ③ user data の refresh（プロフィール保存など）では通知しない → タブリセット防止
 class _AuthChangeNotifier extends ChangeNotifier {
   bool? _prevLoggedIn;
+  bool _startupTimedOut = false;
+  Timer? _startupTimer;
+
+  /// 起動直後の認証確定待ちがいつまでも終わらない場合のフェイルセーフ。
+  /// dart-define未注入などでSupabase初期化が壊れていても、
+  /// スプラッシュ画面に無限に留まらせず未ログイン扱いで先に進める。
+  bool get startupTimedOut => _startupTimedOut;
 
   _AuthChangeNotifier(Ref ref) {
+    _startupTimer = Timer(const Duration(seconds: 15), () {
+      if (_startupTimedOut) return;
+      _startupTimedOut = true;
+      debugPrint('[Router] 起動認証確認が15秒でタイムアウト → 未ログイン扱いで続行');
+      notifyListeners();
+    });
+
     ref.listen<AsyncValue<dynamic>>(authNotifierProvider, (prev, next) {
       if (next.isLoading) return;
+      _startupTimer?.cancel();
       final isLoggedIn = next.value != null;
       final wasLoading = prev?.isLoading ?? true;
       if (wasLoading || _prevLoggedIn != isLoggedIn) {
@@ -34,13 +52,26 @@ class _AuthChangeNotifier extends ChangeNotifier {
           final userId = user?.userId as String?;
           final isPremium = user?.isPremium as bool? ?? false;
           if (userId != null) {
-            BleEncounterService().start(userId: userId, isPremium: isPremium);
+            BleEncounterService()
+                .start(userId: userId, isPremium: isPremium)
+                .then((started) {
+              if (!started) {
+                // 権限拒否時は開始完了扱いにしない（バナーで再設定を促す）
+                debugPrint('[BLE] start skipped (permissions denied)');
+              }
+            });
           }
         } else {
           BleEncounterService().stop().catchError((_) {});
         }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _startupTimer?.cancel();
+    super.dispose();
   }
 }
 
@@ -50,20 +81,35 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/splash',
     refreshListenable: authChangeNotifier,
+    // 未知のディープリンク（想定外のURLスキームの断片など）が来ても、既定の
+    // 「Page not found.」を出さずスプラッシュへ逃がす（redirectが現在の
+    // 認証状態に応じて正しい画面へ流し直す）。
+    errorBuilder: (context, state) => const _SplashScreen(),
     redirect: (context, state) async {
       final authState = ref.read(authNotifierProvider);
       final loc = state.matchedLocation;
       final isSplash = loc == '/splash';
       final isAuthRoute = loc == '/auth';
       final isGateRoute = loc == '/age-consent';
+      // Google/Apple OAuthのリダイレクト先(jp.nozawataiki.yahe://auth/callback)。
+      // iOSではこのURLがSupabaseの内部ディープリンク処理とは別に、Flutterの
+      // ルーティングにも渡ってしまい、未定義パスとしてGoRouterの404
+      // （"Page not found."）が一瞬表示されてしまう。専用ルートを用意し、
+      // 下の「入口系ルート」判定にも含めることで、ログイン確定後は
+      // 通常通りホーム/オンボーディングへ流れるようにする。
+      final isAuthCallback = loc == '/auth/callback';
 
-      // ロード中はスプラッシュに留まる
-      if (authState.isLoading) return isSplash ? null : '/splash';
+      // ロード中はスプラッシュに留まる（15秒経ってもロードが終わらない場合は
+      // フェイルセーフとして未ログイン扱いで進める。認証確定後は
+      // _AuthChangeNotifier のリスナーが正しい状態へ再度リダイレクトする）
+      if (authState.isLoading && !authChangeNotifier.startupTimedOut) {
+        return isSplash ? null : '/splash';
+      }
 
-      final isLoggedIn = authState.value != null;
+      final isLoggedIn = !authState.isLoading && authState.value != null;
 
-      // 未ログイン → ログイン画面のみ許可
-      if (!isLoggedIn) return isAuthRoute ? null : '/auth';
+      // 未ログイン → ログイン画面のみ許可（OAuthコールバック待ちの間はそのまま留まる）
+      if (!isLoggedIn) return (isAuthRoute || isAuthCallback) ? null : '/auth';
 
       // ログイン済み：年齢確認・規約同意が未完 or 停止中はゲートへ
       final user = authState.value;
@@ -72,7 +118,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (needsGate) return isGateRoute ? null : '/age-consent';
 
       // ゲート通過済み：入口系ルートにいるならオンボーディング/ホームへ
-      if (isGateRoute || isSplash || isAuthRoute) {
+      if (isGateRoute || isSplash || isAuthRoute || isAuthCallback) {
         final done = await isOnboardingDone();
         return done ? '/home' : '/onboarding';
       }
@@ -87,6 +133,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/auth',
         builder: (context, state) => const AuthScreen(),
+      ),
+      // Google/Apple OAuthのリダイレクト先。上のredirectが即座に正しい画面へ流すため、
+      // ここでは何も表示せずスプラッシュと同じ待機画面を出すだけでよい。
+      GoRoute(
+        path: '/auth/callback',
+        builder: (context, state) => const _SplashScreen(),
       ),
       // 年齢確認・規約同意ゲート（ログイン後・未同意/停止時）
       GoRoute(
@@ -107,10 +159,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       ShellRoute(
         builder: (context, state, child) => MainScaffold(child: child),
         routes: [
-          GoRoute(path: '/home', builder: (context, state) => const SizedBox.shrink()),
-          GoRoute(path: '/match', builder: (context, state) => const SizedBox.shrink()),
-          GoRoute(path: '/my-car', builder: (context, state) => const SizedBox.shrink()),
-          GoRoute(path: '/settings', builder: (context, state) => const SizedBox.shrink()),
+          GoRoute(
+              path: '/home',
+              builder: (context, state) => const SizedBox.shrink()),
+          GoRoute(
+              path: '/match',
+              builder: (context, state) => const SizedBox.shrink()),
+          GoRoute(
+              path: '/my-car',
+              builder: (context, state) => const SizedBox.shrink()),
+          GoRoute(
+              path: '/settings',
+              builder: (context, state) => const SizedBox.shrink()),
         ],
       ),
       GoRoute(
@@ -155,7 +215,8 @@ class _SplashScreen extends StatelessWidget {
 
 class _VehicleRegisterFlow extends ConsumerStatefulWidget {
   @override
-  ConsumerState<_VehicleRegisterFlow> createState() => _VehicleRegisterFlowState();
+  ConsumerState<_VehicleRegisterFlow> createState() =>
+      _VehicleRegisterFlowState();
 }
 
 class _VehicleRegisterFlowState extends ConsumerState<_VehicleRegisterFlow> {

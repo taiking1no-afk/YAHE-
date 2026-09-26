@@ -1,24 +1,20 @@
 import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
-import '../constants/app_constants.dart';
+import '../supabase/supabase_config.dart';
 import 'revenuecat_config.dart';
-import '../../features/profile/data/user_repository.dart';
 
-/// RevenueCat のエンタイトルメント状態を Supabase に同期する。
+/// RevenueCat の状態をサーバー検証付きで Supabase に同期する。
+/// クライアントから plan を直接書くことは禁止（Edge Function + Webhook のみ）。
 class SubscriptionSync {
   SubscriptionSync._();
 
-  static const _gearPlusEntitlement = 'gear_plus';
-  static const _gearREntitlement = 'gear_r';
-  static const _pitInEntitlement = 'pit_in';
-
   /// ログイン後・購入後に呼び出し。同期成功時 true。
-  static Future<bool> syncToSupabase(String userId) async {
+  static Future<bool> syncToSupabase(String userId, {String? productId}) async {
     if (!RevenueCatConfig.isConfigured) return false;
 
     try {
-      final info = await Purchases.getCustomerInfo();
-      return _applyCustomerInfo(userId, info);
+      await Purchases.getCustomerInfo();
+      return _invokeSync(productId: productId);
     } catch (e) {
       debugPrint('[SubscriptionSync] sync error: $e');
       return false;
@@ -26,61 +22,33 @@ class SubscriptionSync {
   }
 
   /// 購入直後の CustomerInfo を反映。
-  static Future<bool> applyPurchase(String userId, CustomerInfo info) async {
-    return _applyCustomerInfo(userId, info);
-  }
-
-  static Future<bool> _applyCustomerInfo(
+  static Future<bool> applyPurchase(
     String userId,
-    CustomerInfo info,
-  ) async {
-    final gearR = info.entitlements.active[_gearREntitlement];
-    if (gearR != null) {
-      await UserRepository().syncSubscriptionPlan(
-        userId: userId,
-        plan: 'gear_r',
-        markTrialUsed: true,
-      );
-      return true;
-    }
-
-    final gearPlus = info.entitlements.active[_gearPlusEntitlement];
-    if (gearPlus != null) {
-      final trialEnds = _introTrialEndsAt(gearPlus);
-      await UserRepository().syncSubscriptionPlan(
-        userId: userId,
-        plan: 'gear_plus',
-        trialEndsAt: trialEnds,
-        markTrialUsed: true,
-      );
-      return true;
-    }
-
-    final pitIn = info.entitlements.active[_pitInEntitlement];
-    if (pitIn != null) {
-      await UserRepository().syncSubscriptionPlan(
-        userId: userId,
-        plan: 'pit_in',
-      );
-      return true;
-    }
-
-    await UserRepository().syncSubscriptionPlan(
-      userId: userId,
-      plan: 'free',
-    );
-    return false;
+    CustomerInfo info, {
+    String? productId,
+  }) async {
+    return _invokeSync(productId: productId);
   }
 
-  /// イントロオファー / 無料トライアル期間中のみ終了日時を返す。
-  static DateTime? _introTrialEndsAt(EntitlementInfo entitlement) {
-    final periodType = entitlement.periodType;
-    if (periodType != PeriodType.trial && periodType != PeriodType.intro) {
-      return null;
+  static Future<bool> _invokeSync({String? productId}) async {
+    try {
+      final res = await SupabaseConfig.client.functions.invoke(
+        'sync-subscription',
+        body: {
+          if (productId != null) 'product_id': productId,
+        },
+      );
+      final data = res.data;
+      if (data is Map && data['ok'] == true) {
+        debugPrint('[SubscriptionSync] plan=${data['plan']}');
+        return true;
+      }
+      debugPrint('[SubscriptionSync] unexpected: $data');
+      return false;
+    } catch (e) {
+      debugPrint('[SubscriptionSync] invoke error: $e');
+      return false;
     }
-    final raw = entitlement.expirationDate;
-    if (raw == null || raw.isEmpty) return null;
-    return DateTime.tryParse(raw);
   }
 
   /// Gear+ 初月無料のお試しがまだ使えるか（RevenueCat 側の intro eligibility）。
@@ -88,12 +56,12 @@ class SubscriptionSync {
     if (!RevenueCatConfig.isConfigured) return true;
     try {
       final info = await Purchases.getCustomerInfo();
-      if (info.entitlements.active.containsKey(_gearPlusEntitlement) ||
-          info.entitlements.active.containsKey(_gearREntitlement)) {
+      if (info.entitlements.active.containsKey('gear_plus') ||
+          info.entitlements.active.containsKey('gear_r')) {
         return false;
       }
       if (info.allPurchasedProductIdentifiers
-          .contains(AppConstants.gearPlusProductId)) {
+          .contains('yahe_gear_plus_monthly')) {
         return false;
       }
       return true;

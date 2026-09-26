@@ -2,38 +2,55 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../shared/providers/global_realtime_providers.dart';
 import '../../../shared/providers/list_grid_layout_provider.dart';
 import '../../../shared/providers/tab_provider.dart';
+import '../../../shared/widgets/ad_grid_helper.dart';
+import '../../../shared/widgets/like_limit_upsell_dialog.dart';
 import '../../../shared/widgets/limited_profile_sheet.dart';
+import '../../../shared/widgets/match_celebration_dialog.dart';
+import '../../../shared/widgets/public_badge.dart';
+import '../../../shared/widgets/sample_timeline_preview.dart';
+import '../../../shared/widgets/share_encounter_card.dart';
 import '../../../shared/widgets/signed_storage_image.dart';
 import '../../../shared/widgets/yahe_app_bar.dart';
+import '../../ads/banner_ad_widget.dart';
 import '../../auth/presentation/auth_provider.dart';
 import '../../home/data/encounter_repository.dart';
+import '../../home/presentation/encounter_card.dart' show BoostBadge;
 import '../../home/presentation/home_provider.dart';
 import '../../match/presentation/match_screen.dart';
+import '../../profile/data/user_repository.dart';
 import '../../vehicle/models/vehicle.dart';
+import '../../vehicle/presentation/vehicle_register_provider.dart';
 import '../data/likes_repository.dart';
 import '../models/like_entry.dart';
 
 const _likesLayoutKey = 'likes';
 
-final _likesRepoProvider = Provider<LikesRepository>((ref) => LikesRepository());
-final _encounterRepoProvider = Provider<EncounterRepository>((ref) => EncounterRepository());
+final _likesRepoProvider =
+    Provider<LikesRepository>((ref) => LikesRepository());
+final _encounterRepoProvider =
+    Provider<EncounterRepository>((ref) => EncounterRepository());
 
-final sentLikesProvider = FutureProvider.autoDispose<List<LikeEntry>>((ref) async {
+final sentLikesProvider =
+    FutureProvider.autoDispose<List<LikeEntry>>((ref) async {
   final user = ref.watch(authNotifierProvider).value;
   if (user == null) return [];
   return ref.read(_likesRepoProvider).fetchSentLikes(user.userId);
 });
 
-final receivedLikesProvider = FutureProvider.autoDispose<List<LikeEntry>>((ref) async {
+final receivedLikesProvider =
+    FutureProvider.autoDispose<List<LikeEntry>>((ref) async {
   final user = ref.watch(authNotifierProvider).value;
   if (user == null) return [];
   return ref.read(_likesRepoProvider).fetchReceivedLikes(user.userId);
 });
 
 class LikesScreen extends ConsumerStatefulWidget {
-  const LikesScreen({super.key});
+  /// 統合タブ（SocialHubScreen）内に埋め込む場合はtrue。
+  final bool embedded;
+  const LikesScreen({super.key, this.embedded = false});
 
   @override
   ConsumerState<LikesScreen> createState() => _LikesScreenState();
@@ -58,56 +75,76 @@ class _LikesScreenState extends ConsumerState<LikesScreen>
   @override
   Widget build(BuildContext context) {
     final layout = ref.watch(listGridLayoutProvider(_likesLayoutKey));
+
+    final actions = [
+      IconButton(
+        tooltip: layout == ListGridLayout.list ? 'グリッド表示に切り替え' : 'リスト表示に切り替え',
+        icon: Icon(layout == ListGridLayout.list
+            ? Icons.grid_view_rounded
+            : Icons.view_agenda_outlined),
+        onPressed: () =>
+            ref.read(listGridLayoutProvider(_likesLayoutKey).notifier).toggle(),
+      ),
+      IconButton(
+        icon: const Icon(Icons.refresh),
+        onPressed: () {
+          ref.invalidate(sentLikesProvider);
+          ref.invalidate(receivedLikesProvider);
+        },
+      ),
+    ];
+
+    final body = Column(
+      children: [
+        // タブバー
+        Container(
+          color: AppColors.surface,
+          child: TabBar(
+            controller: _tabController,
+            labelColor: AppColors.primary,
+            unselectedLabelColor: AppColors.textMuted,
+            indicatorColor: AppColors.primary,
+            dividerColor: AppColors.border,
+            tabs: [
+              _TabWithBadge(label: 'いいねした', provider: sentLikesProvider),
+              _TabWithBadge(
+                  label: 'いいねされた',
+                  provider: receivedLikesProvider,
+                  highlight: true),
+            ],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              // いいねした相手
+              _SentLikesList(),
+              // いいねされた相手（いいね返しでマッチ）
+              _ReceivedLikesList(),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+                mainAxisAlignment: MainAxisAlignment.end, children: actions),
+          ),
+          Expanded(child: body),
+        ],
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: YaheAppBar(
-        title: 'いいね',
-        showBack: false,
-        actions: [
-          IconButton(
-            tooltip: layout == ListGridLayout.list ? 'グリッド表示に切り替え' : 'リスト表示に切り替え',
-            icon: Icon(layout == ListGridLayout.list ? Icons.grid_view_rounded : Icons.view_agenda_outlined),
-            onPressed: () => ref.read(listGridLayoutProvider(_likesLayoutKey).notifier).toggle(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              ref.invalidate(sentLikesProvider);
-              ref.invalidate(receivedLikesProvider);
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // タブバー
-          Container(
-            color: AppColors.surface,
-            child: TabBar(
-              controller: _tabController,
-              labelColor: AppColors.primary,
-              unselectedLabelColor: AppColors.textMuted,
-              indicatorColor: AppColors.primary,
-              dividerColor: AppColors.border,
-              tabs: [
-                _TabWithBadge(label: 'いいねした', provider: sentLikesProvider),
-                _TabWithBadge(label: 'いいねされた', provider: receivedLikesProvider, highlight: true),
-              ],
-            ),
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                // いいねした相手
-                _SentLikesList(),
-                // いいねされた相手（いいね返しでマッチ）
-                _ReceivedLikesList(),
-              ],
-            ),
-          ),
-        ],
-      ),
+      appBar: YaheAppBar(title: 'いいね', showBack: false, actions: actions),
+      body: body,
     );
   }
 }
@@ -118,7 +155,8 @@ class _TabWithBadge extends ConsumerWidget {
   final ProviderBase<AsyncValue<List<LikeEntry>>> provider;
   final bool highlight;
 
-  const _TabWithBadge({required this.label, required this.provider, this.highlight = false});
+  const _TabWithBadge(
+      {required this.label, required this.provider, this.highlight = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -138,7 +176,10 @@ class _TabWithBadge extends ConsumerWidget {
               ),
               child: Text(
                 count.toString(),
-                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -154,25 +195,54 @@ class _SentLikesList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(sentLikesProvider);
     final layout = ref.watch(listGridLayoutProvider(_likesLayoutKey));
+    final showAds =
+        !(ref.watch(authNotifierProvider).value?.isPremium ?? false);
     return async.when(
-      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary)),
       error: (_, __) => const Center(child: Text('読み込みに失敗しました')),
       data: (entries) {
         if (entries.isEmpty) {
-          return const Center(
+          return SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(24),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.favorite_border, size: 56, color: AppColors.textMuted),
-                SizedBox(height: 12),
-                Text('まだいいねしていません', style: TextStyle(color: AppColors.textSecondary)),
-                SizedBox(height: 6),
-                Text('YAHEタブから気になる車にいいねしよう', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                const Icon(Icons.favorite_border,
+                    size: 56, color: AppColors.textMuted),
+                const SizedBox(height: 12),
+                const Text('まだいいねしていません',
+                    style: TextStyle(color: AppColors.textSecondary)),
+                const SizedBox(height: 6),
+                const Text('YAHEタブから気になる車にいいねしよう',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                const SizedBox(height: 32),
+                const SampleTimelinePreview(
+                  sampleName: 'サンプルユーザー',
+                  sampleSubtitle: 'いいね日: ◯月◯日',
+                  description: 'いいねした相手はここに表示されます。相互にいいねするとマッチが成立します。',
+                ),
               ],
             ),
           );
         }
+
+        Widget gridCard(BuildContext context, LikeEntry entry) =>
+            _LikeEntryGridCard(
+              entry: entry,
+              canLikeBack: false,
+              showCancel: !entry.isMatched,
+            );
+
         if (layout == ListGridLayout.grid) {
+          if (showAds) {
+            return CustomScrollView(
+              slivers: buildAdInterleavedGridSlivers<LikeEntry>(
+                items: entries,
+                itemBuilder: gridCard,
+              ),
+            );
+          }
           return GridView.builder(
             padding: const EdgeInsets.all(12),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -182,17 +252,28 @@ class _SentLikesList extends ConsumerWidget {
               childAspectRatio: 3 / 4,
             ),
             itemCount: entries.length,
-            itemBuilder: (context, i) => _LikeEntryGridCard(
-              entry: entries[i],
-              canLikeBack: false,
-              showCancel: !entries[i].isMatched,
-            ),
+            itemBuilder: (context, i) => gridCard(context, entries[i]),
+          );
+        }
+
+        if (showAds) {
+          final items = interleaveItemsWithAds<LikeEntry>(entries);
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: items.length,
+            itemBuilder: (context, i) {
+              final item = items[i];
+              if (item == 'ad') return const InlineBannerAdCard();
+              return _LikeEntryTile(
+                  entry: item as LikeEntry, canLikeBack: false);
+            },
           );
         }
         return ListView.separated(
           padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: entries.length,
-          separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border, indent: 72),
+          separatorBuilder: (_, __) =>
+              const Divider(height: 1, color: AppColors.border, indent: 72),
           itemBuilder: (context, i) => _LikeEntryTile(
             entry: entries[i],
             canLikeBack: false,
@@ -210,47 +291,111 @@ class _ReceivedLikesList extends ConsumerWidget {
     final async = ref.watch(receivedLikesProvider);
     final user = ref.watch(authNotifierProvider).value;
     final layout = ref.watch(listGridLayoutProvider(_likesLayoutKey));
+    final showAds = !(user?.isPremium ?? false);
 
     return async.when(
-      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary)),
       error: (_, __) => const Center(child: Text('読み込みに失敗しました')),
       data: (entries) {
         if (entries.isEmpty) {
-          return const Center(
+          return SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(24),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.favorite, size: 56, color: AppColors.textMuted),
-                SizedBox(height: 12),
-                Text('まだいいねされていません', style: TextStyle(color: AppColors.textSecondary)),
-                SizedBox(height: 6),
-                Text('ドライブしてYAHEしよう！', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                const Icon(Icons.favorite,
+                    size: 56, color: AppColors.textMuted),
+                const SizedBox(height: 12),
+                const Text('まだいいねされていません',
+                    style: TextStyle(color: AppColors.textSecondary)),
+                const SizedBox(height: 6),
+                const Text('ドライブしてYAHEしよう！',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                const SizedBox(height: 32),
+                const SampleTimelinePreview(
+                  sampleName: 'サンプルユーザー',
+                  sampleSubtitle: 'いいね日: ◯月◯日',
+                  description: 'いいねしてくれた相手はここに表示されます。いいねを返すとマッチが成立します。',
+                ),
               ],
             ),
           );
         }
 
-        VoidCallback? buildLikeBack(int i) {
+        VoidCallback? buildLikeBack(LikeEntry entry) {
           if (user == null) return null;
           return () async {
             final repo = ref.read(_encounterRepoProvider);
-            final result = await repo.sendLike(
-              fromUserId: user.userId,
-              toUserId: entries[i].otherUserId,
-              encounterId: entries[i].encounterId,
-            );
-            ref.invalidate(receivedLikesProvider);
-            ref.invalidate(sentLikesProvider);
-            if (result['is_matched'] == true) {
-              ref.invalidate(matchesProvider);
+            try {
+              final encounterId = entry.encounterId;
+              final result = encounterId != null
+                  ? await repo.sendLike(
+                      fromUserId: user.userId,
+                      toUserId: entry.otherUserId,
+                      encounterId: encounterId,
+                    )
+                  : await repo.sendLikeNoEncounter(
+                      fromUserId: user.userId,
+                      toUserId: entry.otherUserId,
+                    );
+              ref.invalidate(receivedLikesProvider);
+              ref.invalidate(sentLikesProvider);
+              ref.invalidate(todayLikeCountProvider);
+              if (result['success'] != true) {
+                if (context.mounted) {
+                  if (result['error'] == 'daily_limit_exceeded') {
+                    LikeLimitUpsellDialog.show(context);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content:
+                            Text('いいねに失敗しました: ${result['error'] ?? 'unknown'}'),
+                      ),
+                    );
+                  }
+                }
+                return;
+              }
+              if (result['is_matched'] == true) {
+                ref.invalidate(matchesProvider);
+                if (context.mounted) {
+                  MatchCelebrationDialog.show(
+                    context,
+                    onShare: () => _shareMatch(context, ref, entry),
+                    onViewMatch: () {
+                      Navigator.pop(context);
+                      goToSocialSubTab(ref, 2);
+                    },
+                  );
+                }
+              }
+            } catch (e) {
               if (context.mounted) {
-                _showMatchDialog(context, ref);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('いいねに失敗しました: $e')),
+                );
               }
             }
           };
         }
 
+        Widget gridCard(BuildContext context, LikeEntry entry) =>
+            _LikeEntryGridCard(
+              entry: entry,
+              canLikeBack: !entry.isMatched,
+              onLikeBack: buildLikeBack(entry),
+            );
+
         if (layout == ListGridLayout.grid) {
+          if (showAds) {
+            return CustomScrollView(
+              slivers: buildAdInterleavedGridSlivers<LikeEntry>(
+                items: entries,
+                itemBuilder: gridCard,
+              ),
+            );
+          }
           return GridView.builder(
             padding: const EdgeInsets.all(12),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -260,53 +405,64 @@ class _ReceivedLikesList extends ConsumerWidget {
               childAspectRatio: 3 / 4,
             ),
             itemCount: entries.length,
-            itemBuilder: (context, i) => _LikeEntryGridCard(
-              entry: entries[i],
-              canLikeBack: !entries[i].isMatched,
-              onLikeBack: buildLikeBack(i),
-            ),
+            itemBuilder: (context, i) => gridCard(context, entries[i]),
+          );
+        }
+
+        if (showAds) {
+          final items = interleaveItemsWithAds<LikeEntry>(entries);
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: items.length,
+            itemBuilder: (context, i) {
+              final item = items[i];
+              if (item == 'ad') return const InlineBannerAdCard();
+              final entry = item as LikeEntry;
+              return _LikeEntryTile(
+                entry: entry,
+                canLikeBack: !entry.isMatched,
+                onLikeBack: buildLikeBack(entry),
+              );
+            },
           );
         }
 
         return ListView.separated(
           padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: entries.length,
-          separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border, indent: 72),
+          separatorBuilder: (_, __) =>
+              const Divider(height: 1, color: AppColors.border, indent: 72),
           itemBuilder: (context, i) => _LikeEntryTile(
             entry: entries[i],
             canLikeBack: !entries[i].isMatched,
-            onLikeBack: buildLikeBack(i),
+            onLikeBack: buildLikeBack(entries[i]),
           ),
         );
       },
     );
   }
 
-  void _showMatchDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Row(
-          children: [
-            Icon(Icons.favorite, color: AppColors.primary),
-            SizedBox(width: 8),
-            Text('マッチしました！'),
-          ],
-        ),
-        content: const Text('マッチタブからSNSで繋がりましょう'),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ref.read(selectedTabProvider.notifier).state = 2;
-            },
-            child: const Text('マッチを見る'),
-          ),
-        ],
-      ),
-    );
-  }
+  Future<void> _shareMatch(
+          BuildContext context, WidgetRef ref, LikeEntry entry) =>
+      _shareLikeEntryMatch(context, ref, entry);
+}
+
+// マッチ済みの相手をSNSでシェアする（いいね一覧のカードから開いた詳細シート用）
+Future<void> _shareLikeEntryMatch(
+    BuildContext context, WidgetRef ref, LikeEntry entry) async {
+  final me = ref.read(authNotifierProvider).value;
+  if (me == null) return;
+  final myVehicle = await ref.read(myVehicleProvider(me.userId).future);
+  if (!context.mounted) return;
+  await shareEncounter(
+    context: context,
+    occasionEmoji: '🎉',
+    occasionTitle: 'マッチしました！',
+    myUser: me,
+    myVehicle: myVehicle,
+    otherUser: entry.otherUser,
+    otherVehicle: entry.otherVehicle,
+  );
 }
 
 // ─── いいねエントリーカード ──────────────────────────────────
@@ -315,7 +471,8 @@ class _LikeEntryTile extends ConsumerWidget {
   final bool canLikeBack;
   final VoidCallback? onLikeBack;
 
-  const _LikeEntryTile({required this.entry, required this.canLikeBack, this.onLikeBack});
+  const _LikeEntryTile(
+      {required this.entry, required this.canLikeBack, this.onLikeBack});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -324,24 +481,33 @@ class _LikeEntryTile extends ConsumerWidget {
     final user = entry.otherUser;
     final timeStr = DateFormat('M月d日 HH:mm').format(entry.createdAt);
     final currentUser = ref.watch(authNotifierProvider).value;
+    final blockedIds =
+        ref.watch(blockedUserIdsProvider).value ?? const <String>{};
 
     return GestureDetector(
-      onTap: () => LimitedProfileSheet.show(
-        context,
-        vehicle: primaryVehicle,
-        otherVehicles: vehicles,
-        otherUser: user,
-        otherUserId: entry.otherUserId,
-        currentUserId: currentUser?.userId,
-        iLiked: !canLikeBack,
-        isMatched: entry.isMatched,
-        onLike: canLikeBack ? onLikeBack : null,
-        onBlocked: () {
-          ref.invalidate(sentLikesProvider);
-          ref.invalidate(receivedLikesProvider);
-          ref.invalidate(matchesProvider);
-        },
-      ),
+      onTap: () async {
+        UserRepository().recordProfileView(entry.otherUserId);
+        final isBlockedByOther =
+            await UserRepository().amIBlockedBy(entry.otherUserId);
+        if (!context.mounted) return;
+        LimitedProfileSheet.show(
+          context,
+          vehicle: primaryVehicle,
+          otherVehicles: vehicles,
+          otherUser: user,
+          otherUserId: entry.otherUserId,
+          currentUserId: currentUser?.userId,
+          iLiked: !canLikeBack,
+          isMatched: entry.isMatched,
+          isBlocked: blockedIds.contains(entry.otherUserId),
+          isBlockedByOther: isBlockedByOther,
+          onLike: canLikeBack ? onLikeBack : null,
+          onShare: entry.isMatched
+              ? (ctx) => _shareLikeEntryMatch(ctx, ref, entry)
+              : null,
+          onBlocked: () => invalidateAfterBlockChange(ref),
+        );
+      },
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
@@ -358,7 +524,8 @@ class _LikeEntryTile extends ConsumerWidget {
             // メイン写真
             if (primaryVehicle?.photos.isNotEmpty == true)
               ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
                 child: SignedStorageImage(
                   storedReference: primaryVehicle!.photos.first,
                   height: 140,
@@ -368,11 +535,14 @@ class _LikeEntryTile extends ConsumerWidget {
               )
             else
               ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
                 child: Container(
                   height: 100,
                   color: AppColors.surface,
-                  child: const Center(child: Icon(Icons.directions_car, color: AppColors.textMuted, size: 40)),
+                  child: const Center(
+                      child: Icon(Icons.directions_car,
+                          color: AppColors.textMuted, size: 40)),
                 ),
               ),
 
@@ -390,15 +560,38 @@ class _LikeEntryTile extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (user != null)
-                              Text(
-                                user.nickname,
-                                style: const TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      user.nickname,
+                                      style: const TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (!user.isPrivate) ...[
+                                    const SizedBox(width: 6),
+                                    const PublicBadge(),
+                                  ],
+                                ],
                               ),
-                            if (user?.comment != null && user!.comment!.isNotEmpty) ...[
+                            if (entry.boostType != null) ...[
+                              const SizedBox(height: 4),
+                              BoostBadge(
+                                emoji: entry.boostType == 'geki_shibu'
+                                    ? '🌟'
+                                    : '🔥',
+                                label: entry.boostType == 'geki_shibu'
+                                    ? '激渋！'
+                                    : '渋！',
+                              ),
+                            ],
+                            if (user?.comment != null &&
+                                user!.comment!.isNotEmpty) ...[
                               const SizedBox(height: 2),
                               Text(
                                 '"${user.comment!}"',
@@ -414,7 +607,8 @@ class _LikeEntryTile extends ConsumerWidget {
                             const SizedBox(height: 4),
                             Text(
                               timeStr,
-                              style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                              style: const TextStyle(
+                                  color: AppColors.textMuted, fontSize: 12),
                             ),
                           ],
                         ),
@@ -422,13 +616,19 @@ class _LikeEntryTile extends ConsumerWidget {
                       const SizedBox(width: 8),
                       if (entry.isMatched)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color: AppColors.primary.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: AppColors.primary),
                           ),
-                          child: const Text('MATCH', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                          child: const Text('MATCH',
+                              style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1)),
                         )
                       else if (canLikeBack)
                         ElevatedButton.icon(
@@ -443,7 +643,8 @@ class _LikeEntryTile extends ConsumerWidget {
                         )
                       else
                         _CancelLikeButton(
-                          onCancel: () => _confirmAndCancelLike(context, ref, entry),
+                          onCancel: () =>
+                              _confirmAndCancelLike(context, ref, entry),
                         ),
                     ],
                   ),
@@ -484,24 +685,33 @@ class _LikeEntryGridCard extends ConsumerWidget {
     final primaryVehicle = entry.otherVehicle;
     final user = entry.otherUser;
     final currentUser = ref.watch(authNotifierProvider).value;
+    final blockedIds =
+        ref.watch(blockedUserIdsProvider).value ?? const <String>{};
 
     return GestureDetector(
-      onTap: () => LimitedProfileSheet.show(
-        context,
-        vehicle: primaryVehicle,
-        otherVehicles: entry.otherVehicles,
-        otherUser: user,
-        otherUserId: entry.otherUserId,
-        currentUserId: currentUser?.userId,
-        iLiked: !canLikeBack,
-        isMatched: entry.isMatched,
-        onLike: canLikeBack ? onLikeBack : null,
-        onBlocked: () {
-          ref.invalidate(sentLikesProvider);
-          ref.invalidate(receivedLikesProvider);
-          ref.invalidate(matchesProvider);
-        },
-      ),
+      onTap: () async {
+        UserRepository().recordProfileView(entry.otherUserId);
+        final isBlockedByOther =
+            await UserRepository().amIBlockedBy(entry.otherUserId);
+        if (!context.mounted) return;
+        LimitedProfileSheet.show(
+          context,
+          vehicle: primaryVehicle,
+          otherVehicles: entry.otherVehicles,
+          otherUser: user,
+          otherUserId: entry.otherUserId,
+          currentUserId: currentUser?.userId,
+          iLiked: !canLikeBack,
+          isMatched: entry.isMatched,
+          isBlocked: blockedIds.contains(entry.otherUserId),
+          isBlockedByOther: isBlockedByOther,
+          onLike: canLikeBack ? onLikeBack : null,
+          onShare: entry.isMatched
+              ? (ctx) => _shareLikeEntryMatch(ctx, ref, entry)
+              : null,
+          onBlocked: () => invalidateAfterBlockChange(ref),
+        );
+      },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: Container(
@@ -527,7 +737,9 @@ class _LikeEntryGridCard extends ConsumerWidget {
                 else
                   Container(
                     color: AppColors.surface,
-                    child: const Center(child: Icon(Icons.directions_car, color: AppColors.textMuted, size: 40)),
+                    child: const Center(
+                        child: Icon(Icons.directions_car,
+                            color: AppColors.textMuted, size: 40)),
                   ),
                 Positioned(
                   left: 0,
@@ -547,16 +759,30 @@ class _LikeEntryGridCard extends ConsumerWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (user != null)
-                          Text(
-                            user.nickname,
-                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  user.nickname,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (!user.isPrivate) ...[
+                                const SizedBox(width: 4),
+                                const PublicBadge(),
+                              ],
+                            ],
                           ),
                         if (primaryVehicle != null)
                           Text(
                             primaryVehicle.displayName,
-                            style: const TextStyle(color: Colors.white70, fontSize: 11),
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 11),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -564,17 +790,31 @@ class _LikeEntryGridCard extends ConsumerWidget {
                     ),
                   ),
                 ),
+                if (entry.boostType != null)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: BoostBadge(
+                      emoji: entry.boostType == 'geki_shibu' ? '🌟' : '🔥',
+                      label: entry.boostType == 'geki_shibu' ? '激渋！' : '渋！',
+                    ),
+                  ),
                 Positioned(
                   top: 6,
                   right: 6,
                   child: entry.isMatched
                       ? Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: AppColors.primary,
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Text('MATCH', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)),
+                          child: const Text('MATCH',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800)),
                         )
                       : canLikeBack
                           ? GestureDetector(
@@ -582,25 +822,35 @@ class _LikeEntryGridCard extends ConsumerWidget {
                               child: Container(
                                 width: 32,
                                 height: 32,
-                                decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
-                                child: const Icon(Icons.favorite_border, color: Colors.white, size: 16),
+                                decoration: const BoxDecoration(
+                                    color: Colors.black45,
+                                    shape: BoxShape.circle),
+                                child: const Icon(Icons.favorite_border,
+                                    color: Colors.white, size: 16),
                               ),
                             )
                           : showCancel
                               ? GestureDetector(
-                                  onTap: () => _confirmAndCancelLike(context, ref, entry),
+                                  onTap: () => _confirmAndCancelLike(
+                                      context, ref, entry),
                                   child: Container(
                                     width: 32,
                                     height: 32,
-                                    decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
-                                    child: const Icon(Icons.close, color: Colors.white, size: 16),
+                                    decoration: const BoxDecoration(
+                                        color: Colors.black45,
+                                        shape: BoxShape.circle),
+                                    child: const Icon(Icons.close,
+                                        color: Colors.white, size: 16),
                                   ),
                                 )
                               : Container(
                                   width: 32,
                                   height: 32,
-                                  decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                                  child: const Icon(Icons.favorite, color: Colors.white, size: 16),
+                                  decoration: const BoxDecoration(
+                                      color: AppColors.primary,
+                                      shape: BoxShape.circle),
+                                  child: const Icon(Icons.favorite,
+                                      color: Colors.white, size: 16),
                                 ),
                 ),
               ],
@@ -613,7 +863,8 @@ class _LikeEntryGridCard extends ConsumerWidget {
 }
 
 // 送信済みいいねの取り消し（確認ダイアログ付き）
-Future<void> _confirmAndCancelLike(BuildContext context, WidgetRef ref, LikeEntry entry) async {
+Future<void> _confirmAndCancelLike(
+    BuildContext context, WidgetRef ref, LikeEntry entry) async {
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (_) => AlertDialog(
@@ -639,6 +890,10 @@ Future<void> _confirmAndCancelLike(BuildContext context, WidgetRef ref, LikeEntr
   try {
     await ref.read(_likesRepoProvider).cancelLike(entry.likeId);
     ref.invalidate(sentLikesProvider);
+    // YAHEタブのすれ違いカードの iLiked はここで更新される encountersProvider
+    // から来ている。ここを invalidate していなかったため、いいねを取り消しても
+    // ハートが塗り潰されたまま（再いいね不可）で、アプリ再起動まで直らなかった。
+    ref.invalidate(encountersProvider);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('いいねを取り消しました')),
@@ -672,7 +927,11 @@ class _CancelLikeButton extends StatelessWidget {
           children: [
             Icon(Icons.close, size: 14, color: AppColors.textMuted),
             SizedBox(width: 4),
-            Text('取り消す', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+            Text('取り消す',
+                style: TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -720,7 +979,10 @@ class _VehicleRow extends StatelessWidget {
                         Expanded(
                           child: Text(
                             vehicle.displayName,
-                            style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                            style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -738,11 +1000,13 @@ class _VehicleRow extends StatelessWidget {
               ),
             ],
           ),
-          if (vehicle.customContent != null && vehicle.customContent!.isNotEmpty) ...[
+          if (vehicle.customContent != null &&
+              vehicle.customContent!.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               vehicle.customContent!,
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 12, height: 1.4),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -753,8 +1017,11 @@ class _VehicleRow extends StatelessWidget {
   }
 
   Widget _placeholder() => Container(
-      width: 52, height: 38, color: AppColors.surface,
-      child: const Icon(Icons.directions_car, color: AppColors.textMuted, size: 18));
+      width: 52,
+      height: 38,
+      color: AppColors.surface,
+      child: const Icon(Icons.directions_car,
+          color: AppColors.textMuted, size: 18));
 }
 
 class _Tag extends StatelessWidget {
@@ -768,6 +1035,10 @@ class _Tag extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: AppColors.primary.withOpacity(0.25)),
         ),
-        child: Text(label, style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w600)),
+        child: Text(label,
+            style: const TextStyle(
+                color: AppColors.primary,
+                fontSize: 10,
+                fontWeight: FontWeight.w600)),
       );
 }

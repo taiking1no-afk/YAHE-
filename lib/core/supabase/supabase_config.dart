@@ -10,7 +10,8 @@ class SupabaseConfig {
   static const String _missing = '__MISSING_SUPABASE_ENV__';
 
   // ローカル開発用（Release では使わない）
-  static const String _devSupabaseUrl = 'https://vsulqmnpnylojtxnzbbf.supabase.co';
+  static const String _devSupabaseUrl =
+      'https://vsulqmnpnylojtxnzbbf.supabase.co';
   static const String _devSupabaseAnonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzdWxxbW5wbnlsb2p0eG56YmJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTg3NzcsImV4cCI6MjA5MjQzNDc3N30.hHv3MzoMwi98cInZDfUTTeXCnUzkAhcSQM07x0wzz18';
 
@@ -56,5 +57,16 @@ class SupabaseConfig {
         authFlowType: AuthFlowType.pkce,
       ),
     );
+  }
+
+  static Future<void>? _readyFuture;
+
+  /// 初期化を1回だけ開始し、以降は同じFutureを返す（何度呼んでも安全）。
+  /// main()でrunApp前にブロックする代わりに使う: runApp直後に呼び始め、
+  /// Supabaseへ実際にアクセスする側（AuthNotifier等）がこれをawaitすることで、
+  /// 「起動直後の白い/ネイティブスプラッシュを長く見せず、自前のスプラッシュ画面
+  /// （ローディング中はそのまま表示され続ける）にすぐ差し替える」ことができる。
+  static Future<void> ensureInitialized() {
+    return _readyFuture ??= initialize();
   }
 }

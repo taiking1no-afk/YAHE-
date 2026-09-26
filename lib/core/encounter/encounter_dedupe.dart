@@ -25,8 +25,7 @@ class EncounterTestMode {
   static bool _serverAllowed = false;
   static bool _loaded = false;
 
-  static bool get isActive =>
-      _localEnabled && (_serverAllowed || kDebugMode);
+  static bool get isActive => _localEnabled && (_serverAllowed || kDebugMode);
 
   static Duration get userDedupeWindow =>
       isActive ? EncounterDedupe.testWindow : EncounterDedupe.productionWindow;

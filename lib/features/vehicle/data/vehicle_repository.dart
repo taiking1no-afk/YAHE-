@@ -6,6 +6,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/image_sanitizer.dart';
 import '../../../core/supabase/storage_url_helper.dart';
 import '../models/vehicle.dart';
+import '../models/vehicle_customization_part.dart';
 export '../models/vehicle.dart' show VehicleType, VehicleTypeX;
 
 class VehicleRepository {
@@ -82,8 +83,7 @@ class VehicleRepository {
               'custom_content': customContent,
             'photos': photoUrls,
             if (deliveryDate != null)
-              'delivery_date':
-                  deliveryDate.toIso8601String().split('T').first,
+              'delivery_date': deliveryDate.toIso8601String().split('T').first,
           })
           .select()
           .single();
@@ -169,13 +169,64 @@ class VehicleRepository {
     }
   }
 
-  Future<Vehicle?> fetchVehicleByUserId(String userId) => fetchMyVehicle(userId);
+  /// この車の「オーナーのこだわり」（1台につき1つ、パーツ単位ではなく車単位のコメント）
+  Future<void> updateOwnerPassionComment(
+      String vehicleId, String? comment) async {
+    await _client
+        .from('vehicles')
+        .update({'owner_passion_comment': comment}).eq('vehicle_id', vehicleId);
+  }
+
+  /// 一覧/サムネイル表示時の写真焦点（トリミング中心）を更新する。
+  Future<void> updatePhotoFocal(String vehicleId, double x, double y) async {
+    await _client.from('vehicles').update({
+      'photo_focal_x': x,
+      'photo_focal_y': y,
+    }).eq('vehicle_id', vehicleId);
+  }
+
+  Future<Vehicle?> fetchVehicleByUserId(String userId) =>
+      fetchMyVehicle(userId);
 
   Future<void> deleteVehicle(String vehicleId) async {
     await _client
         .from('vehicles')
-        .update({'is_active': false})
-        .eq('vehicle_id', vehicleId);
+        .update({'is_active': false}).eq('vehicle_id', vehicleId);
+  }
+
+  Future<List<VehicleCustomizationPart>> fetchCustomizationParts(
+      String vehicleId) async {
+    final rows = await _client
+        .from('vehicle_customization_parts')
+        .select()
+        .eq('vehicle_id', vehicleId)
+        .order('display_order', ascending: true);
+    return rows.map((r) => VehicleCustomizationPart.fromJson(r)).toList();
+  }
+
+  Future<void> upsertCustomizationPart(VehicleCustomizationPart part) async {
+    await _client
+        .from('vehicle_customization_parts')
+        .upsert(part.toUpsertJson(), onConflict: 'vehicle_id,category');
+  }
+
+  /// マッチ済みの相手の車の「気になるカスタム」を送信する。
+  /// 送信後、Edge Function経由でpush通知も送る（失敗してもエラーにしない）。
+  Future<void> sendCustomInterest({
+    required String vehicleId,
+    required String ownerUserId,
+    required List<CustomizationCategory> categories,
+  }) async {
+    await _client.rpc('send_custom_interest', params: {
+      'p_vehicle_id': vehicleId,
+      'p_categories': categories.map((c) => c.value).toList(),
+    });
+    try {
+      await _client.functions
+          .invoke('send-custom-interest-notification', body: {
+        'to_user_id': ownerUserId,
+      });
+    } catch (_) {}
   }
 
   Future<String?> _uploadPhoto(File file, String userId) async {

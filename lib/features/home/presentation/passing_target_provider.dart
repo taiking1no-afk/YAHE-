@@ -56,7 +56,9 @@ class PassingTargetNotifier extends Notifier<PassingTarget> {
     if (user == null) return;
 
     state = target;
-    await ref.read(userRepositoryProvider).setPassingTarget(user.userId, target);
+    await ref
+        .read(userRepositoryProvider)
+        .setPassingTarget(user.userId, target);
     ref.invalidate(authNotifierProvider);
   }
 }

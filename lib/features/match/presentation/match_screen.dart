@@ -6,6 +6,10 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/external_link.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../shared/providers/list_grid_layout_provider.dart';
+import '../../../shared/widgets/ad_grid_helper.dart';
+import '../../../shared/widgets/invite_to_board_sheet.dart';
+import '../../../shared/widgets/public_badge.dart';
+import '../../../shared/widgets/sample_timeline_preview.dart';
 import '../../../shared/widgets/signed_storage_image.dart';
 import '../../../shared/widgets/yahe_app_bar.dart';
 import '../../ads/banner_ad_widget.dart';
@@ -17,7 +21,8 @@ import 'match_detail_screen.dart';
 
 const _matchLayoutKey = 'match';
 
-final matchRepositoryProvider = Provider<MatchRepository>((ref) => MatchRepository());
+final matchRepositoryProvider =
+    Provider<MatchRepository>((ref) => MatchRepository());
 
 final matchesProvider = FutureProvider<List<MatchModel>>((ref) async {
   final user = ref.watch(authNotifierProvider).value;
@@ -27,82 +32,128 @@ final matchesProvider = FutureProvider<List<MatchModel>>((ref) async {
 });
 
 class MatchScreen extends ConsumerWidget {
-  const MatchScreen({super.key});
+  /// 統合タブ（SocialHubScreen）内に埋め込む場合はtrue。
+  final bool embedded;
+  const MatchScreen({super.key, this.embedded = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final matchesAsync = ref.watch(matchesProvider);
     final layout = ref.watch(listGridLayoutProvider(_matchLayoutKey));
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: YaheAppBar(
-        title: 'マッチ',
-        showBack: false,
-        actions: [
-          IconButton(
-            tooltip: layout == ListGridLayout.list ? 'グリッド表示に切り替え' : 'リスト表示に切り替え',
-            icon: Icon(layout == ListGridLayout.list ? Icons.grid_view_rounded : Icons.view_agenda_outlined),
-            onPressed: () => ref.read(listGridLayoutProvider(_matchLayoutKey).notifier).toggle(),
-          ),
-        ],
+    final actions = [
+      IconButton(
+        tooltip: layout == ListGridLayout.list ? 'グリッド表示に切り替え' : 'リスト表示に切り替え',
+        icon: Icon(layout == ListGridLayout.list
+            ? Icons.grid_view_rounded
+            : Icons.view_agenda_outlined),
+        onPressed: () =>
+            ref.read(listGridLayoutProvider(_matchLayoutKey).notifier).toggle(),
       ),
-      body: matchesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (e, _) => const Center(child: Text('読み込みに失敗しました')),
-        data: (matches) {
-          if (matches.isEmpty) {
-            return _EmptyState();
-          }
+    ];
 
-          void openDetail(MatchModel match) => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => MatchDetailScreen(match: match)),
+    final body = matchesAsync.when(
+      loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary)),
+      error: (e, _) => const Center(child: Text('読み込みに失敗しました')),
+      data: (matches) {
+        if (matches.isEmpty) {
+          return _EmptyState();
+        }
+
+        void openDetail(MatchModel match) => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => MatchDetailScreen(match: match)),
+            );
+
+        // 無料ユーザーのみ広告を挿入
+        final isPremium =
+            ref.watch(authNotifierProvider).value?.isPremium ?? false;
+
+        if (layout == ListGridLayout.grid) {
+          Widget gridCard(BuildContext context, MatchModel match) =>
+              GestureDetector(
+                onTap: () => openDetail(match),
+                child: _MatchGridCard(match: match),
               );
 
-          if (layout == ListGridLayout.grid) {
-            return GridView.builder(
-              padding: const EdgeInsets.all(12),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                childAspectRatio: 3 / 4,
+          if (!isPremium) {
+            return CustomScrollView(
+              slivers: buildAdInterleavedGridSlivers<MatchModel>(
+                items: matches,
+                itemBuilder: gridCard,
               ),
-              itemCount: matches.length,
-              itemBuilder: (context, i) {
-                final match = matches[i];
-                return GestureDetector(
-                  onTap: () => openDetail(match),
-                  child: _MatchGridCard(match: match),
-                );
-              },
             );
           }
+          return GridView.builder(
+            padding: const EdgeInsets.all(12),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 3 / 4,
+            ),
+            itemCount: matches.length,
+            itemBuilder: (context, i) => gridCard(context, matches[i]),
+          );
+        }
 
-          // ランダム間隔（2〜5件）で広告を挿入
-          final items = _buildMatchItemsWithAds(matches);
+        if (isPremium) {
           return ListView.builder(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: items.length,
+            itemCount: matches.length,
             itemBuilder: (context, i) {
-              final item = items[i];
-              if (item == 'ad') return const InlineBannerAdCard();
-              final match = item as MatchModel;
+              final match = matches[i];
               return GestureDetector(
                 onTap: () => openDetail(match),
                 child: _MatchCard(match: match),
               );
             },
           );
-        },
-      ),
+        }
+        final items = _buildMatchItemsWithAds(matches);
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: items.length,
+          itemBuilder: (context, i) {
+            final item = items[i];
+            if (item == 'ad') return const InlineBannerAdCard();
+            final match = item as MatchModel;
+            return GestureDetector(
+              onTap: () => openDetail(match),
+              child: _MatchCard(match: match),
+            );
+          },
+        );
+      },
+    );
+
+    if (embedded) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+                mainAxisAlignment: MainAxisAlignment.end, children: actions),
+          ),
+          Expanded(child: body),
+        ],
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: YaheAppBar(title: 'マッチ', showBack: false, actions: actions),
+      body: body,
     );
   }
 }
 
+// 固定シードで、providerの更新等での再構築のたびに広告位置が
+// 入れ替わってちらつくのを防ぐ（ad_grid_helper.dartの他画面と同じ方針）。
 List<dynamic> _buildMatchItemsWithAds(List<MatchModel> matches) {
-  final rng = Random();
+  final rng = Random(42);
   final items = <dynamic>[];
   int nextAdAt = 2 + rng.nextInt(4);
   int count = 0;
@@ -118,12 +169,12 @@ List<dynamic> _buildMatchItemsWithAds(List<MatchModel> matches) {
   return items;
 }
 
-class _MatchCard extends StatelessWidget {
+class _MatchCard extends ConsumerWidget {
   final MatchModel match;
   const _MatchCard({required this.match});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final user = match.otherUser;
     final vehicles = match.otherVehicles;
     final primaryVehicle = match.otherVehicle;
@@ -142,7 +193,8 @@ class _MatchCard extends StatelessWidget {
           // メイン写真
           if (primaryVehicle?.photos.isNotEmpty == true)
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
               child: SignedStorageImage(
                 storedReference: primaryVehicle!.photos.first,
                 height: 150,
@@ -152,11 +204,14 @@ class _MatchCard extends StatelessWidget {
             )
           else
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
               child: Container(
                 height: 80,
                 color: AppColors.surface,
-                child: const Center(child: Icon(Icons.directions_car, color: AppColors.textMuted, size: 36)),
+                child: const Center(
+                    child: Icon(Icons.directions_car,
+                        color: AppColors.textMuted, size: 36)),
               ),
             ),
 
@@ -173,15 +228,27 @@ class _MatchCard extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            user?.nickname ?? '名無し',
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                            ),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  user?.nickname ?? '名無し',
+                                  style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (user?.isPrivate == false) ...[
+                                const SizedBox(width: 6),
+                                const PublicBadge(),
+                              ],
+                            ],
                           ),
-                          if (user?.comment != null && user!.comment!.isNotEmpty) ...[
+                          if (user?.comment != null &&
+                              user!.comment!.isNotEmpty) ...[
                             const SizedBox(height: 3),
                             Text(
                               '"${user.comment!}"',
@@ -201,15 +268,22 @@ class _MatchCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: AppColors.primary.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Text('MATCH', style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w800)),
+                          child: const Text('MATCH',
+                              style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800)),
                         ),
                         const SizedBox(height: 4),
-                        Text(dateStr, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                        Text(dateStr,
+                            style: const TextStyle(
+                                color: AppColors.textMuted, fontSize: 11)),
                       ],
                     ),
                   ],
@@ -220,9 +294,12 @@ class _MatchCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(Icons.location_on_outlined, size: 13, color: AppColors.textMuted),
+                      const Icon(Icons.location_on_outlined,
+                          size: 13, color: AppColors.textMuted),
                       const SizedBox(width: 3),
-                      Text(user!.area!, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                      Text(user!.area!,
+                          style: const TextStyle(
+                              color: AppColors.textMuted, fontSize: 12)),
                     ],
                   ),
                 ],
@@ -240,7 +317,26 @@ class _MatchCard extends StatelessWidget {
                   const SizedBox(height: 10),
                   const Divider(color: AppColors.border, height: 1),
                   const SizedBox(height: 10),
-                  _SnsLinks(snsLinks: user.snsLinks),
+                  _SnsLinks(
+                    snsLinks: user.snsLinks,
+                    ownerUserId: user.userId,
+                  ),
+                ],
+
+                if (user != null) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => showInviteToBoardSheet(context, ref,
+                          targetUserIds: [user.userId],
+                          chatMatchId: match.matchId),
+                      icon:
+                          const Icon(Icons.event_available_outlined, size: 16),
+                      label: const Text('ツーリング・イベントに誘う',
+                          style: TextStyle(fontSize: 13)),
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -268,7 +364,8 @@ class _MatchGridCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.surfaceCard,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
+          border:
+              Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
         ),
         child: AspectRatio(
           aspectRatio: 3 / 4,
@@ -284,7 +381,9 @@ class _MatchGridCard extends StatelessWidget {
               else
                 Container(
                   color: AppColors.surface,
-                  child: const Center(child: Icon(Icons.directions_car, color: AppColors.textMuted, size: 40)),
+                  child: const Center(
+                      child: Icon(Icons.directions_car,
+                          color: AppColors.textMuted, size: 40)),
                 ),
               Positioned(
                 left: 0,
@@ -303,16 +402,30 @@ class _MatchGridCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        user?.nickname ?? '名無し',
-                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              user?.nickname ?? '名無し',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (user?.isPrivate == false) ...[
+                            const SizedBox(width: 4),
+                            const PublicBadge(),
+                          ],
+                        ],
                       ),
                       if (primaryVehicle != null)
                         Text(
                           primaryVehicle.displayName,
-                          style: const TextStyle(color: Colors.white70, fontSize: 11),
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 11),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -324,24 +437,34 @@ class _MatchGridCard extends StatelessWidget {
                 top: 6,
                 right: 6,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.primary,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Text('MATCH', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)),
+                  child: const Text('MATCH',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800)),
                 ),
               ),
               Positioned(
                 top: 6,
                 left: 6,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: Colors.black45,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(dateStr, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+                  child: Text(dateStr,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
@@ -392,7 +515,10 @@ class _MatchVehicleRow extends StatelessWidget {
                         Expanded(
                           child: Text(
                             vehicle.displayName,
-                            style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                            style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -400,18 +526,22 @@ class _MatchVehicleRow extends StatelessWidget {
                     ),
                     if (tags.isNotEmpty) ...[
                       const SizedBox(height: 3),
-                      Wrap(spacing: 4, children: tags.map((t) => _SmallTag(t)).toList()),
+                      Wrap(
+                          spacing: 4,
+                          children: tags.map((t) => _SmallTag(t)).toList()),
                     ],
                   ],
                 ),
               ),
             ],
           ),
-          if (vehicle.customContent != null && vehicle.customContent!.isNotEmpty) ...[
+          if (vehicle.customContent != null &&
+              vehicle.customContent!.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               vehicle.customContent!,
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 12, height: 1.4),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -422,8 +552,11 @@ class _MatchVehicleRow extends StatelessWidget {
   }
 
   Widget _placeholder() => Container(
-      width: 52, height: 38, color: AppColors.surface,
-      child: const Icon(Icons.directions_car, color: AppColors.textMuted, size: 18));
+      width: 52,
+      height: 38,
+      color: AppColors.surface,
+      child: const Icon(Icons.directions_car,
+          color: AppColors.textMuted, size: 18));
 }
 
 class _SmallTag extends StatelessWidget {
@@ -437,13 +570,18 @@ class _SmallTag extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: AppColors.primary.withOpacity(0.25)),
         ),
-        child: Text(label, style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w600)),
+        child: Text(label,
+            style: const TextStyle(
+                color: AppColors.primary,
+                fontSize: 10,
+                fontWeight: FontWeight.w600)),
       );
 }
 
 class _SnsLinks extends StatelessWidget {
   final List snsLinks;
-  const _SnsLinks({required this.snsLinks});
+  final String? ownerUserId;
+  const _SnsLinks({required this.snsLinks, this.ownerUserId});
 
   @override
   Widget build(BuildContext context) {
@@ -456,7 +594,12 @@ class _SnsLinks extends StatelessWidget {
         final label = link.label as String;
 
         return GestureDetector(
-          onTap: () => openExternalLink(context, url),
+          onTap: () => openExternalLink(
+            context,
+            url,
+            ownerUserId: ownerUserId,
+            platform: platform,
+          ),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
@@ -473,10 +616,12 @@ class _SnsLinks extends StatelessWidget {
                   label.isNotEmpty
                       ? '${_platformLabel(platform)}：$label'
                       : _platformLabel(platform),
-                  style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                  style: const TextStyle(
+                      color: AppColors.textPrimary, fontSize: 13),
                 ),
                 const SizedBox(width: 4),
-                const Icon(Icons.open_in_new, size: 12, color: AppColors.textMuted),
+                const Icon(Icons.open_in_new,
+                    size: 12, color: AppColors.textMuted),
               ],
             ),
           ),
@@ -514,20 +659,31 @@ class _PlatformIcon extends StatelessWidget {
 class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(24),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.favorite_border, size: 64, color: AppColors.textMuted),
-          SizedBox(height: 16),
-          Text(
+          const Icon(Icons.favorite_border,
+              size: 64, color: AppColors.textMuted),
+          const SizedBox(height: 16),
+          const Text(
             'まだマッチはありません',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 16, fontWeight: FontWeight.w600),
+            style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 16,
+                fontWeight: FontWeight.w600),
           ),
-          SizedBox(height: 8),
-          Text(
+          const SizedBox(height: 8),
+          const Text(
             '気になる車にいいねしましょう',
             style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+          ),
+          const SizedBox(height: 32),
+          const SampleTimelinePreview(
+            sampleName: 'サンプルユーザー',
+            sampleSubtitle: 'マッチ日: ◯月◯日',
+            description: '相互にいいねするとマッチが成立し、ここに表示されます。SNSで繋がることもできます。',
           ),
         ],
       ),

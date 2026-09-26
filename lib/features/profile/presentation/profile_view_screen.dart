@@ -3,18 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/focal_point.dart';
+import '../../../shared/widgets/public_badge.dart';
 import '../../../shared/widgets/signed_storage_image.dart';
-import '../../../shared/widgets/vehicle_detail_card.dart';
+import '../../../shared/widgets/notification_bell_button.dart';
+import '../../../shared/widgets/user_groups_section.dart';
 import '../../../shared/widgets/yahe_app_bar.dart';
-import '../../../shared/providers/tab_provider.dart';
+import 'my_car_screen.dart';
 import '../../auth/presentation/auth_provider.dart';
-import '../../notifications/presentation/notifications_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../../vehicle/presentation/vehicle_register_provider.dart';
 import '../../vehicle/models/vehicle.dart';
 import '../../../shared/models/encounter_stats.dart';
+import '../../../shared/models/user_model.dart';
 import 'encounter_stats_provider.dart';
 import 'profile_edit_screen.dart';
+import '../../store/presentation/gear_r_insights_screen.dart';
 
 class ProfileViewScreen extends ConsumerWidget {
   const ProfileViewScreen({super.key});
@@ -22,7 +26,6 @@ class ProfileViewScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final userAsync = ref.watch(authNotifierProvider);
-    final user = userAsync.value;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -31,7 +34,7 @@ class ProfileViewScreen extends ConsumerWidget {
         showBack: false,
         actions: [
           // ベルアイコン（未読バッジ付き）
-          _BellButton(),
+          const NotificationBellButton(),
           IconButton(
             icon: const Icon(Icons.edit_outlined, color: AppColors.primary),
             tooltip: 'プロフィール編集',
@@ -51,7 +54,8 @@ class ProfileViewScreen extends ConsumerWidget {
         ],
       ),
       body: userAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+        loading: () => const Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
         error: (_, __) => const Center(child: Text('読み込みに失敗しました')),
         data: (user) {
           if (user == null) return const Center(child: Text('ログインが必要です'));
@@ -69,17 +73,66 @@ class ProfileViewScreen extends ConsumerWidget {
                 if (user.snsLinks.isNotEmpty)
                   _SnsSection(snsLinks: user.snsLinks),
 
+                // ─── 公開SNSリンク（本人確認用。マッチ後に相手へ表示される）
+                _PublicSnsSection(
+                  link: user.publicSnsLink,
+                  onEdit: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ProfileEditScreen()),
+                  ).then((_) => ref.invalidate(authNotifierProvider)),
+                ),
+
+                // ─── インサイトアクティビティ（Gear R限定）
+                if (user.isGearR)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const GearRInsightsScreen()),
+                      ),
+                      icon: const Icon(Icons.insights_outlined, size: 18),
+                      label: const Text('インサイトアクティビティを見る'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                        side: const BorderSide(color: Color(0xFF6C63FF)),
+                        foregroundColor: const Color(0xFF6C63FF),
+                      ),
+                    ),
+                  ),
+
                 // ─── 愛車一覧
                 vehiclesAsync.when(
                   loading: () => const Padding(
                     padding: EdgeInsets.all(24),
-                    child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                    child: Center(
+                        child: CircularProgressIndicator(
+                            color: AppColors.primary)),
                   ),
                   error: (_, __) => const SizedBox.shrink(),
                   data: (vehicles) => vehicles.isEmpty
-                      ? const SizedBox.shrink()
+                      // 愛車未登録の場合のみ登録ボタンを表示
+                      ? Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const MyCarScreen()),
+                              ),
+                              icon: const Icon(Icons.directions_car_outlined),
+                              label: const Text('愛車を登録する'),
+                            ),
+                          ),
+                        )
                       : _VehiclesSection(vehicles: vehicles),
                 ),
+
+                // ─── 所属グループ
+                UserGroupsSection(userId: user.userId),
 
                 const SizedBox(height: 32),
               ],
@@ -109,17 +162,31 @@ class _ProfileHeader extends StatelessWidget {
             avatarUrl: user.avatarUrl,
             nickname: user.nickname,
             radius: 44,
+            focalX: user.avatarFocalX,
+            focalY: user.avatarFocalY,
           ),
           const SizedBox(height: 14),
 
           // ニックネーム
-          Text(
-            user.nickname as String? ?? '名無し',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  user.nickname as String? ?? '名無し',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (user.isPrivate == false) ...[
+                const SizedBox(width: 6),
+                const PublicBadge(),
+              ],
+            ],
           ),
 
           // 居住エリア
@@ -128,30 +195,58 @@ class _ProfileHeader extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.location_on_outlined, size: 14, color: AppColors.textMuted),
+                const Icon(Icons.location_on_outlined,
+                    size: 14, color: AppColors.textMuted),
                 const SizedBox(width: 3),
                 Text(
                   user.area as String,
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                  style:
+                      const TextStyle(color: AppColors.textMuted, fontSize: 13),
                 ),
               ],
             ),
           ],
 
-          // Gear+ バッジ
+          // プランバッジ（ピットイン / Gear+ / Gear R を区別して表示）
           if (user.isPremium == true) ...[
             const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFFFFD700), Color(0xFFFFA500)]),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'Gear+',
-                style: TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.w800),
-              ),
-            ),
+            Builder(builder: (context) {
+              final (label, gradient, textColor) = switch (user.effectivePlan) {
+                'gear_r' => (
+                    'Gear R',
+                    const LinearGradient(
+                        colors: [Color(0xFF6C63FF), Color(0xFF8B7FFF)]),
+                    Colors.white,
+                  ),
+                'gear_plus' => (
+                    'Gear+',
+                    const LinearGradient(
+                        colors: [Color(0xFFFFD700), Color(0xFFFFA500)]),
+                    Colors.black,
+                  ),
+                _ => (
+                    'ピットイン',
+                    const LinearGradient(
+                        colors: [Color(0xFFFF8C00), Color(0xFFFFA94D)]),
+                    Colors.black,
+                  ),
+              };
+              return Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  gradient: gradient,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                      color: textColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800),
+                ),
+              );
+            }),
           ],
 
           // ヤエー人数（累計・本日）
@@ -236,7 +331,10 @@ class _StatItem extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -261,7 +359,11 @@ class _SnsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('SNS', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+          const Text('SNS',
+              style: TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
@@ -270,16 +372,19 @@ class _SnsSection extends StatelessWidget {
               final platform = link.platform as String;
               final url = link.url as String;
               final label = link.label as String;
-              final platformLabel = AppConstants.snsPlatforms
-                  .firstWhere((p) => p['key'] == platform, orElse: () => {'label': 'SNS'})['label']!;
+              final platformLabel = AppConstants.snsPlatforms.firstWhere(
+                  (p) => p['key'] == platform,
+                  orElse: () => {'label': 'SNS'})['label']!;
 
               return GestureDetector(
                 onTap: () async {
                   final uri = Uri.tryParse(url);
-                  if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  if (uri != null)
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: AppColors.background,
                     borderRadius: BorderRadius.circular(20),
@@ -290,10 +395,12 @@ class _SnsSection extends StatelessWidget {
                     children: [
                       Text(
                         label.isNotEmpty ? label : platformLabel,
-                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                        style: const TextStyle(
+                            color: AppColors.textPrimary, fontSize: 13),
                       ),
                       const SizedBox(width: 4),
-                      const Icon(Icons.open_in_new, size: 12, color: AppColors.textMuted),
+                      const Icon(Icons.open_in_new,
+                          size: 12, color: AppColors.textMuted),
                     ],
                   ),
                 ),
@@ -307,6 +414,96 @@ class _SnsSection extends StatelessWidget {
 }
 
 // ─── 愛車一覧セクション ──────────────────────────────────
+// ─── 公開SNSリンク（本人確認用。マッチ後に相手へ公開される） ────
+class _PublicSnsSection extends StatelessWidget {
+  final PublicSnsLink? link;
+  final VoidCallback onEdit;
+  const _PublicSnsSection({required this.link, required this.onEdit});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF6C63FF).withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.public, size: 14, color: Color(0xFF6C63FF)),
+              const SizedBox(width: 6),
+              const Text('公開SNSリンク',
+                  style: TextStyle(
+                      color: Color(0xFF6C63FF),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600)),
+              if (link != null && !link!.isVisible) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.textMuted.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text('非表示中',
+                      style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (link == null)
+            GestureDetector(
+              onTap: onEdit,
+              child: const Text(
+                '未設定です（プロフィール編集から設定できます）',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+              ),
+            )
+          else
+            GestureDetector(
+              onTap: onEdit,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        link!.label?.isNotEmpty == true
+                            ? link!.label!
+                            : link!.url,
+                        style: const TextStyle(
+                            color: AppColors.textPrimary, fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Icon(Icons.edit_outlined,
+                        size: 14, color: AppColors.textMuted),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _VehiclesSection extends StatelessWidget {
   final List<Vehicle> vehicles;
   const _VehiclesSection({required this.vehicles});
@@ -318,15 +515,36 @@ class _VehiclesSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '愛車 ${vehicles.length}台',
-            style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+          Row(
+            children: [
+              Text(
+                '愛車 ${vehicles.length}台',
+                style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(width: 10),
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const MyCarScreen()),
+                ),
+                child: const Text(
+                  'タップで愛車情報編集',
+                  style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           ...vehicles.map((v) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _VehicleCard(vehicle: v),
-          )),
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _VehicleCard(vehicle: v),
+              )),
         ],
       ),
     );
@@ -342,7 +560,7 @@ class _VehicleCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => _VehicleDetailScreen(vehicle: vehicle)),
+        MaterialPageRoute(builder: (_) => const MyCarScreen()),
       ),
       child: Container(
         decoration: BoxDecoration(
@@ -355,7 +573,8 @@ class _VehicleCard extends StatelessWidget {
           children: [
             if (vehicle.photos.isNotEmpty)
               ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
                 child: Stack(
                   children: [
                     SignedStorageImage(
@@ -363,10 +582,14 @@ class _VehicleCard extends StatelessWidget {
                       height: 180,
                       width: double.infinity,
                       fit: BoxFit.cover,
+                      alignment: focalAlignment(
+                          vehicle.photoFocalX, vehicle.photoFocalY),
                       placeholder: Container(
                         height: 100,
                         color: AppColors.background,
-                        child: const Center(child: Icon(Icons.directions_car_outlined, color: AppColors.textMuted, size: 40)),
+                        child: const Center(
+                            child: Icon(Icons.directions_car_outlined,
+                                color: AppColors.textMuted, size: 40)),
                       ),
                     ),
                     if (vehicle.photos.length > 1)
@@ -374,7 +597,8 @@ class _VehicleCard extends StatelessWidget {
                         top: 10,
                         right: 10,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: Colors.black54,
                             borderRadius: BorderRadius.circular(10),
@@ -382,11 +606,15 @@ class _VehicleCard extends StatelessWidget {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.photo_library_outlined, size: 12, color: Colors.white),
+                              const Icon(Icons.photo_library_outlined,
+                                  size: 12, color: Colors.white),
                               const SizedBox(width: 4),
                               Text(
                                 '${vehicle.photos.length}枚',
-                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600),
                               ),
                             ],
                           ),
@@ -403,7 +631,8 @@ class _VehicleCard extends StatelessWidget {
                   borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
                 ),
                 child: const Center(
-                  child: Icon(Icons.directions_car_outlined, color: AppColors.textMuted, size: 36),
+                  child: Icon(Icons.directions_car_outlined,
+                      color: AppColors.textMuted, size: 36),
                 ),
               ),
             Padding(
@@ -413,13 +642,20 @@ class _VehicleCard extends StatelessWidget {
                 children: [
                   Text(
                     vehicle.displayName,
-                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700),
                   ),
-                  if (vehicle.customContent != null && vehicle.customContent!.isNotEmpty) ...[
+                  if (vehicle.customContent != null &&
+                      vehicle.customContent!.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
                       vehicle.customContent!,
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5),
+                      style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                          height: 1.5),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -434,81 +670,20 @@ class _VehicleCard extends StatelessWidget {
   }
 }
 
-// ─── 愛車詳細画面（タップ時に写真ギャラリー・全情報を表示）───────────
-class _VehicleDetailScreen extends StatelessWidget {
-  final Vehicle vehicle;
-  const _VehicleDetailScreen({required this.vehicle});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: YaheAppBar(title: vehicle.displayName, showBack: true),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: VehicleDetailCard(vehicle: vehicle),
-      ),
-    );
-  }
-}
-
-// ─── ベルボタン（未読バッジ付き）─────────────────────────────
-class _BellButton extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final countAsync = ref.watch(unreadNotifCountProvider);
-    final count = countAsync.value ?? 0;
-
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        IconButton(
-          icon: const Icon(Icons.notifications_outlined),
-          tooltip: 'お知らせ',
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-          ).then((_) => ref.invalidate(unreadNotifCountProvider)),
-        ),
-        if (count > 0)
-          Positioned(
-            top: 8,
-            right: 8,
-            child: Container(
-              width: 16,
-              height: 16,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 1.5),
-              ),
-              child: Center(
-                child: Text(
-                  count > 99 ? '99+' : count.toString(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 // ─── 共通アバターウィジェット（イニシャル or 実画像）────────────
 class _Avatar extends StatelessWidget {
   final String? avatarUrl;
   final String nickname;
   final double radius;
+  final double focalX;
+  final double focalY;
 
   const _Avatar({
     required this.avatarUrl,
     required this.nickname,
     required this.radius,
+    this.focalX = 0.5,
+    this.focalY = 0.5,
   });
 
   @override
@@ -521,6 +696,7 @@ class _Avatar extends StatelessWidget {
           width: radius * 2,
           height: radius * 2,
           fit: BoxFit.cover,
+          alignment: focalAlignment(focalX, focalY),
           placeholder: _initials(),
         ),
       );

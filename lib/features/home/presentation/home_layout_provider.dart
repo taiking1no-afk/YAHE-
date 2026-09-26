@@ -27,4 +27,5 @@ class HomeLayoutNotifier extends Notifier<HomeLayout> {
   }
 }
 
-final homeLayoutProvider = NotifierProvider<HomeLayoutNotifier, HomeLayout>(HomeLayoutNotifier.new);
+final homeLayoutProvider =
+    NotifierProvider<HomeLayoutNotifier, HomeLayout>(HomeLayoutNotifier.new);

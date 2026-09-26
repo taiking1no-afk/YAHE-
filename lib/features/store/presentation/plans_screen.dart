@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:purchases_flutter/errors.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/revenuecat/revenuecat_config.dart';
@@ -37,7 +39,8 @@ class PlansScreen extends ConsumerWidget {
             ],
             const Text(
               '自分のスタイルに合ったプランで\nドライブをもっと楽しもう',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.6),
+              style: TextStyle(
+                  color: AppColors.textSecondary, fontSize: 14, height: 1.6),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
@@ -91,7 +94,11 @@ class PlansScreen extends ConsumerWidget {
                   ? '初月無料 → ¥500/月'
                   : '¥500/月',
               color: AppColors.primary,
-              isCurrent: currentPlan == 'gear_plus',
+              // 24hアイテムや管理者付与によるeffectivePlanではなく、実際の
+              // サブスク状態(paidPlan)で判定する。effectivePlanで判定すると、
+              // 一時的な付与中はずっと「加入中」表示になり購入導線が消えて
+              // しまっていた（本来一番案内したい層から導線が消える不具合）。
+              isCurrent: paidPlan == 'gear_plus',
               badge: user != null && user.shouldPromptGearPlusTrial
                   ? '初月無料'
                   : '人気',
@@ -106,7 +113,7 @@ class PlansScreen extends ConsumerWidget {
               note: user != null && user.shouldPromptGearPlusTrial
                   ? '初回のみ1ヶ月無料。期間終了後は解約しない限り月額¥500に自動更新されます'
                   : '別途スポット購入でアイテム追加可',
-              onSelect: currentPlan == 'gear_plus' || currentPlan == 'gear_r'
+              onSelect: paidPlan == 'gear_plus' || paidPlan == 'gear_r'
                   ? null
                   : () => _purchasePlan(context, ref, _kGearPlusId, 'Gear+'),
               ctaLabel: user != null && user.shouldPromptGearPlusTrial
@@ -120,17 +127,17 @@ class PlansScreen extends ConsumerWidget {
               name: 'Gear R',
               price: '¥3,000/月',
               color: const Color(0xFF6C63FF),
-              isCurrent: currentPlan == 'gear_r',
+              isCurrent: paidPlan == 'gear_r',
               badge: 'ビジネス向け',
               features: const [
                 '💥 スーパーニトロ 毎月1個付き',
                 '🌟 激渋！ 毎月10個付き',
                 '🏆 認証バッジ（購入後すぐ設定可能）',
-                '📊 月次アクセス解析レポート',
+                '📊 インサイトアクティビティ（いつでも見られるアクセス解析）',
                 'Gear+ の全機能を含む',
               ],
               note: '認証バッジは自由にラベルを設定できます（例：インフルエンサー、ユーチューバー）',
-              onSelect: currentPlan == 'gear_r'
+              onSelect: paidPlan == 'gear_r'
                   ? null
                   : () => _showGearRDialog(context, ref),
             ),
@@ -155,11 +162,18 @@ class PlansScreen extends ConsumerWidget {
                         children: [
                           TextSpan(
                             text: 'まずは試してみたい方へ：',
-                            style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
+                            style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700),
                           ),
                           TextSpan(
-                            text: ' ストアから「24時間ギア＋」(¥300) を購入すると、Gear+の全機能を24時間だけ体験できます',
-                            style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5),
+                            text:
+                                ' ストアから「24時間ギア＋」(¥300) を購入すると、Gear+の全機能を24時間だけ体験できます',
+                            style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 13,
+                                height: 1.5),
                           ),
                         ],
                       ),
@@ -173,7 +187,8 @@ class PlansScreen extends ConsumerWidget {
             // 購入を復元
             TextButton(
               onPressed: () => _restorePurchases(context, ref),
-              child: const Text('購入を復元', style: TextStyle(color: AppColors.textMuted)),
+              child: const Text('購入を復元',
+                  style: TextStyle(color: AppColors.textMuted)),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -182,7 +197,8 @@ class PlansScreen extends ConsumerWidget {
               '・Gear+ 初回加入時は1ヶ月無料（期間終了24時間前までに解約しない限り月額¥500に自動更新）\n'
               '・サブスクは期間終了24時間前までに解約しない限り自動更新されます\n'
               '・決済は App Store で管理されます',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.8),
+              style: TextStyle(
+                  color: AppColors.textMuted, fontSize: 11, height: 1.8),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -195,12 +211,14 @@ class PlansScreen extends ConsumerWidget {
                   label: '利用規約',
                   builder: (_) => const TermsScreen(),
                 ),
-                const Text('・', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                const Text('・',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
                 _LegalLinkButton(
                   label: 'プライバシーポリシー',
                   builder: (_) => const PrivacyPolicyScreen(),
                 ),
-                const Text('・', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                const Text('・',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
                 _LegalLinkButton(
                   label: '特定商取引法に基づく表記',
                   builder: (_) => const CommercialTransactionScreen(),
@@ -228,7 +246,8 @@ class PlansScreen extends ConsumerWidget {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      builder: (_) => const Center(
+          child: CircularProgressIndicator(color: AppColors.primary)),
     );
 
     try {
@@ -240,20 +259,40 @@ class PlansScreen extends ConsumerWidget {
 
       // Supabase のプランを RevenueCat から同期
       final user = ref.read(authNotifierProvider).value;
+      var synced = false;
       if (user != null) {
-        await SubscriptionSync.applyPurchase(user.userId, info);
+        synced = await SubscriptionSync.applyPurchase(
+          user.userId,
+          info,
+          productId: productId,
+        );
         ref.invalidate(authNotifierProvider);
       }
 
       if (context.mounted) {
-        _showSuccessDialog(context, planName, productId == _kGearRId, isPitIn: productId == _kPitInId);
+        if (synced) {
+          _showSuccessDialog(context, planName, productId == _kGearRId,
+              isPitIn: productId == _kPitInId);
+        } else {
+          // 決済自体は成立しているが、サーバー側への反映に失敗している。
+          // このまま「加入しました」と出すと、実際にはプランが切り替わって
+          // いないのに成功したように見えてしまう。
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('決済は完了しましたが、反映に失敗しました。'
+                  'しばらくしてからアプリを再起動してください。'),
+              duration: Duration(seconds: 6),
+            ),
+          );
+        }
       }
-    } on PurchasesErrorCode catch (e) {
+    } on PlatformException catch (e) {
       if (!context.mounted) return;
       Navigator.pop(context);
-      if (e != PurchasesErrorCode.purchaseCancelledError) {
+      final code = PurchasesErrorHelper.getErrorCode(e);
+      if (code != PurchasesErrorCode.purchaseCancelledError) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('購入に失敗しました: ${e.name}')),
+          SnackBar(content: Text('購入に失敗しました: ${code.name}')),
         );
       }
     } catch (e) {
@@ -284,7 +323,10 @@ class PlansScreen extends ConsumerWidget {
           children: [
             Text(
               '月額 ¥3,000 で加入します。',
-              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 16),
+              style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16),
             ),
             SizedBox(height: 12),
             Text(
@@ -292,16 +334,20 @@ class PlansScreen extends ConsumerWidget {
               '・スーパーニトロ 毎月1個\n'
               '・激渋！ 毎月10個\n'
               '・認証バッジ（自由にラベル設定可能）\n'
-              '・月次アクセス解析レポート\n'
+              '・インサイトアクティビティ（随時閲覧可能なアクセス解析）\n'
               '・Gear+ の全機能',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.6),
+              style: TextStyle(
+                  color: AppColors.textSecondary, fontSize: 13, height: 1.6),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('キャンセル')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('キャンセル')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6C63FF)),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6C63FF)),
             onPressed: () {
               Navigator.pop(context);
               _purchasePlan(context, ref, _kGearRId, 'Gear R');
@@ -313,14 +359,21 @@ class PlansScreen extends ConsumerWidget {
     );
   }
 
-  void _showSuccessDialog(BuildContext context, String planName, bool isGearR, {bool isPitIn = false}) {
+  void _showSuccessDialog(BuildContext context, String planName, bool isGearR,
+      {bool isPitIn = false}) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
         title: Row(
           children: [
-            Text(isPitIn ? '🏁' : isGearR ? '💥' : '⚡', style: const TextStyle(fontSize: 24)),
+            Text(
+                isPitIn
+                    ? '🏁'
+                    : isGearR
+                        ? '💥'
+                        : '⚡',
+                style: const TextStyle(fontSize: 24)),
             const SizedBox(width: 8),
             Text('$planName に加入しました！'),
           ],
@@ -334,7 +387,8 @@ class PlansScreen extends ConsumerWidget {
           style: const TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
-          ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context), child: const Text('OK')),
         ],
       ),
     );
@@ -345,7 +399,13 @@ class PlansScreen extends ConsumerWidget {
       final info = await RevenueCatConfig.restorePurchases();
       if (!context.mounted) return;
 
-      if (info == null) {
+      // restorePurchases() はAPI呼び出し自体が成功する限り常にCustomerInfoを
+      // 返す（何も購入していない新規ユーザーでも）。infoの有無ではなく、
+      // 有効なエンタイトルメントが実際にあるかで判定しないと、復元対象が
+      // 無くても常に「復元しました」と表示されてしまっていた。
+      final hasActiveEntitlement =
+          info != null && info.entitlements.active.isNotEmpty;
+      if (!hasActiveEntitlement) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('復元できる購入が見つかりませんでした')),
         );
@@ -354,13 +414,16 @@ class PlansScreen extends ConsumerWidget {
 
       // 有効なエンタイトルメントを確認してプランを更新
       final user = ref.read(authNotifierProvider).value;
+      var synced = false;
       if (user != null) {
-        await SubscriptionSync.applyPurchase(user.userId, info);
+        synced = await SubscriptionSync.applyPurchase(user.userId, info);
         ref.invalidate(authNotifierProvider);
       }
+      if (!context.mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('購入を復元しました')),
+        SnackBar(
+            content: Text(synced ? '購入を復元しました' : '復元に失敗しました。もう一度お試しください。')),
       );
     } catch (e) {
       if (!context.mounted) return;
@@ -369,7 +432,6 @@ class PlansScreen extends ConsumerWidget {
       );
     }
   }
-
 }
 
 class _TrialBanner extends StatelessWidget {
@@ -488,41 +550,64 @@ class _PlanCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(name, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.w900)),
+              Text(name,
+                  style: TextStyle(
+                      color: color, fontSize: 20, fontWeight: FontWeight.w900)),
               if (badge != null) ...[
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
-                  child: Text(badge!, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                      color: color, borderRadius: BorderRadius.circular(8)),
+                  child: Text(badge!,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700)),
                 ),
               ],
               const Spacer(),
               if (isCurrent)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(color: color.withOpacity(0.3)),
                   ),
-                  child: Text('利用中', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+                  child: Text('利用中',
+                      style: TextStyle(
+                          color: color,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
                 ),
             ],
           ),
           const SizedBox(height: 4),
-          Text(price, style: TextStyle(color: color, fontSize: 24, fontWeight: FontWeight.w800)),
+          Text(price,
+              style: TextStyle(
+                  color: color, fontSize: 24, fontWeight: FontWeight.w800)),
           const SizedBox(height: 14),
           ...features.map((f) => Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text(f, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4)),
-          )),
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(f,
+                    style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                        height: 1.4)),
+              )),
           if (note != null) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8)),
-              child: Text(note!, style: const TextStyle(color: AppColors.textMuted, fontSize: 11, height: 1.5)),
+              decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(8)),
+              child: Text(note!,
+                  style: const TextStyle(
+                      color: AppColors.textMuted, fontSize: 11, height: 1.5)),
             ),
           ],
           if (onSelect != null) ...[
@@ -580,7 +665,7 @@ class _CompareTable extends StatelessWidget {
       ('スーパーニトロ', '─', '─', '─', '月1個'),
       ('激渋！', '─', '─', '─', '月10個'),
       ('認証バッジ', '─', '─', '─', '◯'),
-      ('アクセス解析', '─', '─', '─', '月次'),
+      ('インサイトアクティビティ', '─', '─', '─', '随時'),
     ];
 
     return Container(
@@ -595,19 +680,44 @@ class _CompareTable extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 10),
             decoration: BoxDecoration(
               color: AppColors.background,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(14)),
             ),
             child: const Row(
               children: [
                 Expanded(flex: 3, child: SizedBox()),
-                Expanded(flex: 2, child: Text('無料', textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 10, fontWeight: FontWeight.w700))),
-                Expanded(flex: 2, child: Text('ピットイン', textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFFFF8C00), fontSize: 10, fontWeight: FontWeight.w700))),
-                Expanded(flex: 2, child: Text('Gear+', textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w700))),
-                Expanded(flex: 2, child: Text('Gear R', textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFF6C63FF), fontSize: 10, fontWeight: FontWeight.w700))),
+                Expanded(
+                    flex: 2,
+                    child: Text('無料',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700))),
+                Expanded(
+                    flex: 2,
+                    child: Text('ピットイン',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: Color(0xFFFF8C00),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700))),
+                Expanded(
+                    flex: 2,
+                    child: Text('Gear+',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700))),
+                Expanded(
+                    flex: 2,
+                    child: Text('Gear R',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: Color(0xFF6C63FF),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700))),
               ],
             ),
           ),
@@ -618,23 +728,51 @@ class _CompareTable extends StatelessWidget {
             return Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                   child: Row(
                     children: [
-                      Expanded(flex: 3, child: Text(row.$1,
-                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 11))),
-                      Expanded(flex: 2, child: Text(row.$2, textAlign: TextAlign.center,
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11))),
-                      Expanded(flex: 2, child: Text(row.$3, textAlign: TextAlign.center,
-                          style: const TextStyle(color: Color(0xFFFF8C00), fontSize: 11, fontWeight: FontWeight.w600))),
-                      Expanded(flex: 2, child: Text(row.$4, textAlign: TextAlign.center,
-                          style: const TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w600))),
-                      Expanded(flex: 2, child: Text(row.$5, textAlign: TextAlign.center,
-                          style: const TextStyle(color: Color(0xFF6C63FF), fontSize: 11, fontWeight: FontWeight.w600))),
+                      Expanded(
+                          flex: 3,
+                          child: Text(row.$1,
+                              style: const TextStyle(
+                                  color: AppColors.textPrimary, fontSize: 11))),
+                      Expanded(
+                          flex: 2,
+                          child: Text(row.$2,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 11))),
+                      Expanded(
+                          flex: 2,
+                          child: Text(row.$3,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  color: Color(0xFFFF8C00),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600))),
+                      Expanded(
+                          flex: 2,
+                          child: Text(row.$4,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600))),
+                      Expanded(
+                          flex: 2,
+                          child: Text(row.$5,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  color: Color(0xFF6C63FF),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600))),
                     ],
                   ),
                 ),
-                if (i < rows.length - 1) const Divider(height: 1, color: AppColors.border),
+                if (i < rows.length - 1)
+                  const Divider(height: 1, color: AppColors.border),
               ],
             );
           }),

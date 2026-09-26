@@ -101,15 +101,20 @@ class AppTheme {
         chipTheme: ChipThemeData(
           backgroundColor: AppColors.surfaceCard,
           selectedColor: AppColors.primary.withOpacity(0.2),
-          labelStyle: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          labelStyle:
+              const TextStyle(color: AppColors.textSecondary, fontSize: 13),
           side: const BorderSide(color: AppColors.border),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         textTheme: const TextTheme(
-          headlineLarge: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800),
-          headlineMedium: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700),
-          titleLarge: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700),
-          titleMedium: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+          headlineLarge: TextStyle(
+              color: AppColors.textPrimary, fontWeight: FontWeight.w800),
+          headlineMedium: TextStyle(
+              color: AppColors.textPrimary, fontWeight: FontWeight.w700),
+          titleLarge: TextStyle(
+              color: AppColors.textPrimary, fontWeight: FontWeight.w700),
+          titleMedium: TextStyle(
+              color: AppColors.textPrimary, fontWeight: FontWeight.w600),
           bodyLarge: TextStyle(color: AppColors.textPrimary),
           bodyMedium: TextStyle(color: AppColors.textSecondary),
           bodySmall: TextStyle(color: AppColors.textMuted, fontSize: 12),

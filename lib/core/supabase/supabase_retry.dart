@@ -3,7 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_config.dart';
 
 /// Supabase の AuthException（トークン切れ）発生時にセッションを更新して再実行する
-Future<T> withSupabaseRetry<T>(Future<T> Function() fn, {int maxRetries = 1}) async {
+Future<T> withSupabaseRetry<T>(Future<T> Function() fn,
+    {int maxRetries = 1}) async {
   for (int attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
@@ -19,7 +20,11 @@ Future<T> withSupabaseRetry<T>(Future<T> Function() fn, {int maxRetries = 1}) as
       }
     } on PostgrestException catch (e) {
       // JWT expired
-      if (e.code == 'PGRST301' || (e.message.contains('JWT') && attempt < maxRetries)) {
+      // 以前は `attempt < maxRetries` が2つ目の条件にしか掛かっておらず、
+      // 最終試行でPGRST301が発生すると本来のPostgrestExceptionではなく
+      // 末尾の汎用StateErrorにすり替わって原因追跡ができなくなっていた。
+      final isJwtExpired = e.code == 'PGRST301' || e.message.contains('JWT');
+      if (isJwtExpired && attempt < maxRetries) {
         debugPrint('[Supabase] JWT期限切れ → リフレッシュ');
         try {
           await SupabaseConfig.client.auth.refreshSession();
