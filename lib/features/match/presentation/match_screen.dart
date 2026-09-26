@@ -52,7 +52,11 @@ class MatchScreen extends ConsumerWidget {
       ),
     ];
 
-    final body = matchesAsync.when(
+    final body = RefreshIndicator(
+      color: AppColors.primary,
+      backgroundColor: AppColors.surface,
+      onRefresh: () async => ref.invalidate(matchesProvider),
+      child: matchesAsync.when(
       loading: () => const Center(
           child: CircularProgressIndicator(color: AppColors.primary)),
       error: (e, _) => const Center(child: Text('読み込みに失敗しました')),
@@ -127,6 +131,7 @@ class MatchScreen extends ConsumerWidget {
           },
         );
       },
+      ),
     );
 
     if (embedded) {

@@ -28,6 +28,13 @@ class RevenueCatConfig {
   // SDK を呼んで失敗する事故を防ぐ。
   static Future<void>? _initFuture;
 
+  // logIn()に最後に渡されたuserId。ログイン直後の一時的な通信不調で
+  // logIn自体が失敗しても、購入直前に再試行して正しいIDへ紐付け直すために保持する
+  // （紐付けに失敗したままだと、購入がRevenueCat側では匿名IDに記録されてしまい、
+  // sync-subscription/webhookのどちらも実ユーザーへ反映できず「購入したのにfreeのまま」
+  // という不具合になるため）。
+  static String? _lastUserId;
+
   static Future<void> initialize({String? userId}) {
     return _initFuture ??= _doInitialize(userId: userId);
   }
@@ -57,6 +64,7 @@ class RevenueCatConfig {
 
   /// ログイン後にユーザーIDを同期
   static Future<void> logIn(String userId) async {
+    _lastUserId = userId;
     if (!isConfigured) return;
     await _initFuture;
     try {
@@ -70,6 +78,25 @@ class RevenueCatConfig {
           '[RevenueCat] logIn: ${result.customerInfo.originalAppUserId}');
     } catch (e) {
       debugPrint('[RevenueCat] logIn error: $e');
+    }
+  }
+
+  /// 購入直前の防御的な再ログイン確認。
+  /// アプリ起動直後のlogIn()が通信不調等で失敗すると、SDKが匿名IDのままに
+  /// なりうる。その状態で購入が発生すると、RevenueCat側の記録が匿名IDに
+  /// 付いてしまい、以降のsync-subscription/webhookのどちらでも実ユーザーの
+  /// user_idに反映できなくなる（=「購入したのにfreeのまま」）。
+  /// 購入直前にもう一度だけ確認し、必要なら再ログインしてから購入へ進む。
+  static Future<void> _ensureCorrectlyIdentified() async {
+    final expected = _lastUserId;
+    if (expected == null) return;
+    try {
+      final info = await Purchases.getCustomerInfo();
+      if (info.originalAppUserId != expected) {
+        await logIn(expected);
+      }
+    } catch (e) {
+      debugPrint('[RevenueCat] identity check error: $e');
     }
   }
 
@@ -128,6 +155,7 @@ class RevenueCatConfig {
   static Future<CustomerInfo?> purchaseSubscription(String productId) async {
     if (!isConfigured) return null;
     await _initFuture;
+    await _ensureCorrectlyIdentified();
     try {
       final result = await Purchases.purchaseProduct(
         productId,

@@ -90,6 +90,9 @@ dependencies:
   # Gear R インサイトアクティビティのグラフ表示
   fl_chart: ^0.69.2
 
+  # メッセージ送信の冪等キー(client_message_id)生成
+  uuid: ^4.5.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

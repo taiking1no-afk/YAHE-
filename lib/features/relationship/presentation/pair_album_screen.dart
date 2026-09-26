@@ -22,14 +22,22 @@ class PairAlbumScreen extends StatefulWidget {
 
 class _PairAlbumScreenState extends State<PairAlbumScreen> {
   List<PairAlbumEntryModel>? _entries;
+  bool _loadError = false;
 
   @override
   void initState() {
     super.initState();
+    _load();
+  }
+
+  void _load() {
+    setState(() => _loadError = false);
     RelationshipRepository()
         .fetchAlbum(widget.myUserId, widget.otherUserId)
         .then((e) {
       if (mounted) setState(() => _entries = e);
+    }).catchError((_) {
+      if (mounted) setState(() => _loadError = true);
     });
   }
 
@@ -39,7 +47,19 @@ class _PairAlbumScreenState extends State<PairAlbumScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: YaheAppBar(title: '${widget.otherNickname}さんとのアルバム'),
-      body: entries == null
+      body: _loadError
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('読み込みに失敗しました',
+                      style: TextStyle(color: AppColors.textMuted)),
+                  const SizedBox(height: 12),
+                  TextButton(onPressed: _load, child: const Text('再試行')),
+                ],
+              ),
+            )
+          : entries == null
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primary))
           : entries.isEmpty

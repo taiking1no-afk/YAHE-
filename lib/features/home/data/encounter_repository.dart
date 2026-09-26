@@ -165,16 +165,16 @@ class EncounterRepository {
   /// 無料プランの1日いいね上限（AppConstants.freeDailyLikeLimit）に対する
   /// 本日の送信済み件数。today_like_counts はJST日次集計のビュー。
   Future<int> fetchTodayLikeCount(String userId) async {
-    try {
-      final row = await _client
-          .from('today_like_counts')
-          .select('like_count')
-          .eq('from_user_id', userId)
-          .maybeSingle();
-      return (row?['like_count'] as num?)?.toInt() ?? 0;
-    } catch (_) {
-      return 0;
-    }
+    // 行が無い(=本日まだ0件送信)ことと通信失敗を区別する。
+    // 失敗時に0を返すと「残りいいね0/10」のような誤表示になりうるため、
+    // ここでは例外をそのまま伝播させ、呼び出し元(todayLikeCountProvider)を
+    // AsyncErrorにして表示側に「不明」として扱わせる。
+    final row = await _client
+        .from('today_like_counts')
+        .select('like_count')
+        .eq('from_user_id', userId)
+        .maybeSingle();
+    return (row?['like_count'] as num?)?.toInt() ?? 0;
   }
 
   static DateTime _earlier(DateTime a, DateTime b) => a.isBefore(b) ? a : b;

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'
     show
         FileOptions,
@@ -12,6 +13,7 @@ import '../../../core/supabase/storage_url_helper.dart';
 import '../../../core/utils/image_sanitizer.dart';
 import '../models/chat_message_model.dart';
 import '../models/chat_thread_model.dart';
+import '../../../shared/utils/network_timeout.dart';
 
 class ChatRepository {
   final _client = SupabaseConfig.client;
@@ -23,7 +25,8 @@ class ChatRepository {
       final matches = await _client
           .from('matches')
           .select('match_id, user_a_id, user_b_id, dissolved_at')
-          .or('user_a_id.eq.$myUserId,user_b_id.eq.$myUserId');
+          .or('user_a_id.eq.$myUserId,user_b_id.eq.$myUserId')
+          .withNetworkTimeout();
 
       // マッチは非対称ブロックでも解除されず継続する仕様のため、encounters/
       // likes/matches一覧と同様にここでも「自分がブロックした相手」を除外
@@ -154,14 +157,47 @@ class ChatRepository {
     return row as String?;
   }
 
-  Future<List<ChatMessageModel>> fetchMessages(String threadId) async {
-    final rows = await _client
-        .from('chat_messages')
-        .select()
-        .eq('thread_id', threadId)
-        .order('created_at', ascending: true);
+  /// チャット履歴の取得（ページング対応）。
+  /// - 指定なし: 直近[limit]件を返す（初期表示用。履歴が数千件あっても
+  ///   全件取得しないようにする）。
+  /// - [before]: そのタイムスタンプより前のメッセージを直近から[limit]件
+  ///   （「さらに読み込む」で過去へ遡る用）。
+  /// - [after]: そのタイムスタンプより後のメッセージを古い順に全件
+  ///   （Realtime受信時等、既に読み込み済みの続きだけを取得する用）。
+  /// いずれも戻り値は常に古い→新しい順。
+  Future<List<ChatMessageModel>> fetchMessages(
+    String threadId, {
+    int limit = 200,
+    DateTime? before,
+    DateTime? after,
+  }) async {
+    var query = _client.from('chat_messages').select().eq('thread_id', threadId);
+    if (before != null) {
+      query = query.lt('created_at', before.toUtc().toIso8601String());
+    }
+    if (after != null) {
+      query = query.gt('created_at', after.toUtc().toIso8601String());
+    }
+
+    if (after != null) {
+      // 追いかけ取得は取りこぼし厳禁のため件数上限を付けない
+      final rows = await query
+          .order('created_at', ascending: true)
+          .withNetworkTimeout();
+      return (rows as List)
+          .map((r) => ChatMessageModel.fromJson(r as Map<String, dynamic>))
+          .toList();
+    }
+
+    // 直近[limit]件を新しい順で取ってから、表示用に古い順へ並び替える
+    final rows = await query
+        .order('created_at', ascending: false)
+        .limit(limit)
+        .withNetworkTimeout();
     return (rows as List)
         .map((r) => ChatMessageModel.fromJson(r as Map<String, dynamic>))
+        .toList()
+        .reversed
         .toList();
   }
 
@@ -180,6 +216,7 @@ class ChatRepository {
         'p_match_id': matchId,
         'p_content_type': 'text',
         'p_body': text,
+        'p_client_message_id': const Uuid().v4(),
       });
     } catch (e, st) {
       debugPrint('[ChatRepo] sendText failed: $e\n$st');
@@ -195,6 +232,7 @@ class ChatRepository {
         'p_content_type': 'board_invite',
         'p_body': postTitle,
         'p_related_post_id': postId,
+        'p_client_message_id': const Uuid().v4(),
       });
     } catch (e, st) {
       debugPrint('[ChatRepo] sendBoardInvite failed: $e\n$st');
@@ -208,6 +246,7 @@ class ChatRepository {
         'p_match_id': matchId,
         'p_content_type': 'quick_reply',
         'p_body': text,
+        'p_client_message_id': const Uuid().v4(),
       });
     } catch (e, st) {
       debugPrint('[ChatRepo] sendQuickReply failed: $e\n$st');
@@ -221,6 +260,7 @@ class ChatRepository {
         'p_match_id': matchId,
         'p_content_type': 'sns',
         'p_body': snsText,
+        'p_client_message_id': const Uuid().v4(),
       });
     } catch (e, st) {
       debugPrint('[ChatRepo] sendSns failed: $e\n$st');
@@ -245,6 +285,7 @@ class ChatRepository {
         'p_match_id': matchId,
         'p_content_type': 'photo',
         'p_photo_path': stored,
+        'p_client_message_id': const Uuid().v4(),
       });
     } catch (e, st) {
       debugPrint('[ChatRepo] sendPhoto failed: $e\n$st');

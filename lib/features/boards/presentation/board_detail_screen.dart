@@ -22,6 +22,10 @@ import 'create_board_post_screen.dart';
 final _boardDetailRepoProvider =
     Provider<BoardRepository>((ref) => BoardRepository());
 
+/// 参加/興味ありボタンの多重タップ防止用。処理中はtrueにしてボタンを無効化する。
+final _boardActionBusyProvider =
+    StateProvider.family<bool, String>((ref, postId) => false);
+
 final boardPostDetailProvider =
     FutureProvider.autoDispose.family<BoardPostModel?, String>((ref, postId) {
   return ref.watch(_boardDetailRepoProvider).fetchPost(postId);
@@ -84,6 +88,9 @@ class BoardDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _join(BuildContext context, WidgetRef ref) async {
+    final busyNotifier = ref.read(_boardActionBusyProvider(postId).notifier);
+    if (busyNotifier.state) return; // 連打防止
+    busyNotifier.state = true;
     try {
       final result = await ref.read(_boardDetailRepoProvider).join(postId);
       _refresh(ref);
@@ -103,10 +110,15 @@ class BoardDetailScreen extends ConsumerWidget {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(msg)));
       }
+    } finally {
+      busyNotifier.state = false;
     }
   }
 
   Future<void> _interest(BuildContext context, WidgetRef ref) async {
+    final busyNotifier = ref.read(_boardActionBusyProvider(postId).notifier);
+    if (busyNotifier.state) return; // 連打防止
+    busyNotifier.state = true;
     try {
       await ref.read(_boardDetailRepoProvider).expressInterest(postId);
       _refresh(ref);
@@ -119,6 +131,8 @@ class BoardDetailScreen extends ConsumerWidget {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('失敗しました: $e')));
       }
+    } finally {
+      busyNotifier.state = false;
     }
   }
 
@@ -396,6 +410,7 @@ class BoardDetailScreen extends ConsumerWidget {
           myParticipation?.status == BoardParticipationStatus.invited;
       final isFull =
           post.capacity != null && post.joinedCount >= post.capacity!;
+      final actionBusy = ref.watch(_boardActionBusyProvider(postId));
 
       return ListView(
         padding: const EdgeInsets.all(16),
@@ -554,6 +569,7 @@ class BoardDetailScreen extends ConsumerWidget {
                   child: ElevatedButton(
                     onPressed: (isFull ||
                             post.isEnded ||
+                            actionBusy ||
                             post.visibility == BoardVisibility.inviteOnly)
                         ? null
                         : () => _join(context, ref),
@@ -573,8 +589,9 @@ class BoardDetailScreen extends ConsumerWidget {
                   child: OutlinedButton(
                     // 参加ボタンは終了時に無効化されているのに、こちらは
                     // チェックが漏れており終了後も「気になる」を押せていた。
-                    onPressed:
-                        post.isEnded ? null : () => _interest(context, ref),
+                    onPressed: (post.isEnded || actionBusy)
+                        ? null
+                        : () => _interest(context, ref),
                     child: Text(post.isEnded ? '終了しました' : '興味あり'),
                   ),
                 ),

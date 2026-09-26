@@ -37,20 +37,60 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
   bool _loading = true;
   bool _loadError = false;
   bool _sending = false;
+  bool _loadingOlder = false;
+  bool _hasMoreOlder = true;
 
   @override
   void initState() {
     super.initState();
     _load();
     _channel = _repo.subscribeToGroupMessages(widget.groupId, _refresh);
+    _scrollCtrl.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _channel?.unsubscribe();
     _textCtrl.dispose();
+    _scrollCtrl.removeListener(_onScroll);
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollCtrl.hasClients || _loadingOlder || !_hasMoreOlder) return;
+    if (_scrollCtrl.position.pixels <= 200) {
+      _loadOlderMessages();
+    }
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_messages.isEmpty) return;
+    setState(() => _loadingOlder = true);
+    try {
+      final older = await _repo.fetchGroupMessages(
+        widget.groupId,
+        before: _messages.first.createdAt,
+      );
+      if (!mounted) return;
+      final oldExtent =
+          _scrollCtrl.hasClients ? _scrollCtrl.position.maxScrollExtent : 0.0;
+      final oldOffset = _scrollCtrl.hasClients ? _scrollCtrl.position.pixels : 0.0;
+      setState(() {
+        if (older.isEmpty) _hasMoreOlder = false;
+        _messages = [...older, ..._messages];
+        _loadingOlder = false;
+      });
+      if (older.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_scrollCtrl.hasClients) return;
+          final newExtent = _scrollCtrl.position.maxScrollExtent;
+          _scrollCtrl.jumpTo(oldOffset + (newExtent - oldExtent));
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingOlder = false);
+    }
   }
 
   Future<void> _load() async {
@@ -79,12 +119,25 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
 
   Future<void> _refresh() async {
     try {
-      final messages = await _repo.fetchGroupMessages(widget.groupId);
-      await _repo.markGroupRead(widget.groupId);
-      if (mounted) {
-        setState(() => _messages = messages);
-        _scrollToBottom();
+      // 毎回全件取り直すと、メッセージ数が多いグループほど新着のたびに
+      // 重くなっていたため、既に読み込み済みの続きだけを取得して追記する。
+      if (_messages.isEmpty) {
+        final messages = await _repo.fetchGroupMessages(widget.groupId);
+        if (mounted) setState(() => _messages = messages);
+      } else {
+        final newer = await _repo.fetchGroupMessages(
+          widget.groupId,
+          after: _messages.last.createdAt,
+        );
+        if (newer.isNotEmpty && mounted) {
+          final existingIds = _messages.map((m) => m.messageId).toSet();
+          final toAppend =
+              newer.where((m) => !existingIds.contains(m.messageId));
+          setState(() => _messages = [..._messages, ...toAppend]);
+        }
       }
+      await _repo.markGroupRead(widget.groupId);
+      if (mounted) _scrollToBottom();
     } catch (_) {
       // Realtimeコールバックからの呼び出しは誰もawaitしていないため、
       // 例外を投げると未捕捉のFutureエラーになる。ここは失敗しても
@@ -260,11 +313,28 @@ class _GroupChatScreenState extends ConsumerState<GroupChatScreen> {
                         : ListView.builder(
                             controller: _scrollCtrl,
                             padding: const EdgeInsets.all(16),
-                            itemCount: _messages.length,
-                            itemBuilder: (context, i) => _GroupMessageBubble(
-                              message: _messages[i],
-                              isMe: _messages[i].senderId == myId,
-                            ),
+                            itemCount: _messages.length + (_loadingOlder ? 1 : 0),
+                            itemBuilder: (context, i) {
+                              if (_loadingOlder && i == 0) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 12),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: AppColors.primary),
+                                    ),
+                                  ),
+                                );
+                              }
+                              final index = _loadingOlder ? i - 1 : i;
+                              return _GroupMessageBubble(
+                                message: _messages[index],
+                                isMe: _messages[index].senderId == myId,
+                              );
+                            },
                           ),
           ),
           SafeArea(

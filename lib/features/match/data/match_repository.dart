@@ -2,6 +2,7 @@ import '../../../core/supabase/supabase_config.dart';
 import '../models/match_model.dart';
 import '../../vehicle/models/vehicle.dart';
 import '../../../shared/models/user_model.dart';
+import '../../../shared/utils/network_timeout.dart';
 
 class MatchRepository {
   final _client = SupabaseConfig.client;
@@ -16,7 +17,8 @@ class MatchRepository {
         .select()
         .or('user_a_id.eq.$userId,user_b_id.eq.$userId')
         .filter('dissolved_at', 'is', null)
-        .order('matched_at', ascending: false);
+        .order('matched_at', ascending: false)
+        .withNetworkTimeout();
 
     // ブロック中の相手はマッチ一覧に出さない（解除すれば再表示される）
     final blockedIds = await _fetchBlockedIds(userId);
@@ -41,6 +43,11 @@ class MatchRepository {
       Map<String, dynamic>? userData;
       List<Vehicle> vehicles = [];
       List<SnsLink> otherSnsLinks = const [];
+      // 通信失敗で相手情報が取れなかった場合と、行自体が本当に存在しない
+      // 場合を区別する。前者を"otherUser: null"のまま一覧に混ぜると、
+      // 名前・写真が空白の壊れたカードとして表示されてしまうため、
+      // 失敗した行は今回の一覧からは除外する（次回再取得時に復活する）。
+      var fetchFailed = false;
       try {
         final fetched = await Future.wait([
           // 相手情報を取得（マッチング後に開示）
@@ -73,7 +80,11 @@ class MatchRepository {
         otherSnsLinks = snsList
             .map((e) => SnsLink.fromJson(e as Map<String, dynamic>))
             .toList();
-      } catch (_) {}
+      } catch (e) {
+        fetchFailed = true;
+      }
+
+      if (fetchFailed) return null;
 
       return match.copyWith(
         otherUser: userData != null
@@ -84,8 +95,11 @@ class MatchRepository {
       );
     }));
 
-    // 通報により停止された相手はマッチ一覧に出さない
-    return matches.where((m) => !(m.otherUser?.isSuspended ?? false)).toList();
+    // 通信失敗で相手情報が取れなかった行(null)と、通報により停止された相手を除外
+    return matches
+        .whereType<MatchModel>()
+        .where((m) => !(m.otherUser?.isSuspended ?? false))
+        .toList();
   }
 
   /// 単一マッチを相手情報・車両付きで取得する（チャット画面からのプロフィール遷移用）。

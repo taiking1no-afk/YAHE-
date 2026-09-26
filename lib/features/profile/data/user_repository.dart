@@ -7,6 +7,7 @@ import '../../../core/supabase/storage_url_helper.dart';
 import '../../../core/utils/image_sanitizer.dart';
 import '../../../shared/models/user_model.dart';
 import '../../../shared/models/encounter_stats.dart';
+import '../../../shared/utils/network_timeout.dart';
 import '../../auth/presentation/auth_provider.dart';
 import '../../home/models/passing_target.dart';
 
@@ -42,7 +43,8 @@ class UserRepository {
         .from('users')
         .select(_userColumns)
         .eq('user_id', userId)
-        .maybeSingle();
+        .maybeSingle()
+        .withNetworkTimeout();
     if (data == null) return null;
     final snsLinks = await fetchSnsLinks(userId);
     final snsVisible = await fetchSnsVisibleToMatches(userId);

@@ -28,6 +28,8 @@ class _PairLevelBadgeState extends State<PairLevelBadge> {
     super.initState();
     RelationshipRepository().fetchRelationship(widget.otherUserId).then((r) {
       if (mounted) setState(() => _relationship = r);
+    }).catchError((_) {
+      // 失敗時はバッジを表示しないだけ(_relationshipはnullのまま)。
     });
   }
 

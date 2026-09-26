@@ -7,6 +7,7 @@ import '../../../core/utils/image_sanitizer.dart';
 import '../../vehicle/models/vehicle.dart';
 import '../models/board_post_model.dart';
 import '../models/board_participation_model.dart';
+import '../../../shared/utils/network_timeout.dart';
 
 class BoardRepository {
   final _client = SupabaseConfig.client;
@@ -21,7 +22,10 @@ class BoardRepository {
   }
 
   Future<List<BoardPostModel>> fetchPosts(
-      {BoardPostType? postType, String? searchQuery, String? myUserId}) async {
+      {BoardPostType? postType,
+      String? searchQuery,
+      String? myUserId,
+      int limit = 300}) async {
     try {
       var query = _client.from('board_posts').select();
       if (postType != null) {
@@ -37,7 +41,12 @@ class BoardRepository {
           );
         }
       }
-      final rows = await query.order('scheduled_at', ascending: true);
+      // board_postsは終了1ヶ月後に自動削除されるcron(migration_v1_67)があり
+      // 無制限には増えないが、念のため上限を設けて防御する。
+      final rows = await query
+          .order('scheduled_at', ascending: true)
+          .limit(limit)
+          .withNetworkTimeout();
       final posts = (rows as List)
           .map((r) => BoardPostModel.fromJson(r as Map<String, dynamic>))
           .toList();
@@ -315,15 +324,11 @@ class BoardRepository {
 
   /// マッチ済みの相手のうち、この投稿に参加(joined)している人のuser_id一覧
   Future<Set<String>> fetchAttendingMatchUserIds(String postId) async {
-    try {
-      final rows = await _client
-          .rpc('get_board_attending_matches', params: {'p_post_id': postId});
-      return (rows as List)
-          .map((r) => (r as Map<String, dynamic>)['user_id'] as String)
-          .toSet();
-    } catch (_) {
-      return {};
-    }
+    final rows = await _client
+        .rpc('get_board_attending_matches', params: {'p_post_id': postId});
+    return (rows as List)
+        .map((r) => (r as Map<String, dynamic>)['user_id'] as String)
+        .toSet();
   }
 
   Future<String> createPost({

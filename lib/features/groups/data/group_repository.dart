@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'
     show
         RealtimeChannel,
@@ -13,6 +14,7 @@ import '../../../core/utils/image_sanitizer.dart';
 import '../models/group_model.dart';
 import '../models/group_membership_model.dart';
 import '../models/group_message_model.dart';
+import '../../../shared/utils/network_timeout.dart';
 
 class GroupRepository {
   final _client = SupabaseConfig.client;
@@ -30,7 +32,8 @@ class GroupRepository {
       if (searchQuery != null && searchQuery.trim().isNotEmpty) {
         query = query.ilike('name', '%${searchQuery.trim()}%');
       }
-      final rows = await query.order('created_at', ascending: false);
+      final rows =
+          await query.order('created_at', ascending: false).withNetworkTimeout();
 
       final groups = (rows as List)
           .map((r) => GroupModel.fromJson(r as Map<String, dynamic>))
@@ -449,13 +452,36 @@ class GroupRepository {
     }).toList();
   }
 
-  Future<List<GroupMessageModel>> fetchGroupMessages(String groupId) async {
-    final rows = await _client
-        .from('group_messages')
-        .select()
-        .eq('group_id', groupId)
-        .order('created_at', ascending: true);
-    final messages = (rows as List)
+  /// グループチャット履歴の取得（ページング対応）。chat_repository.fetchMessages
+  /// と同じ方針: 通常は直近[limit]件のみ、[before]で過去へ遡り、
+  /// [after]で読み込み済みの続きだけを取得する。
+  Future<List<GroupMessageModel>> fetchGroupMessages(
+    String groupId, {
+    int limit = 200,
+    DateTime? before,
+    DateTime? after,
+  }) async {
+    var query =
+        _client.from('group_messages').select().eq('group_id', groupId);
+    if (before != null) {
+      query = query.lt('created_at', before.toUtc().toIso8601String());
+    }
+    if (after != null) {
+      query = query.gt('created_at', after.toUtc().toIso8601String());
+    }
+
+    final List rows;
+    if (after != null) {
+      rows = await query.order('created_at', ascending: true).withNetworkTimeout();
+    } else {
+      final desc = await query
+          .order('created_at', ascending: false)
+          .limit(limit)
+          .withNetworkTimeout();
+      rows = (desc as List).reversed.toList();
+    }
+
+    final messages = rows
         .map((r) => GroupMessageModel.fromJson(r as Map<String, dynamic>))
         .toList();
     if (messages.isEmpty) return messages;
@@ -485,6 +511,7 @@ class GroupRepository {
         'p_group_id': groupId,
         'p_content_type': isQuickReply ? 'quick_reply' : 'text',
         'p_body': body,
+        'p_client_message_id': const Uuid().v4(),
       });
     } catch (e, st) {
       debugPrint('[GroupRepo] sendGroupMessage failed: $e\n$st');
@@ -511,6 +538,7 @@ class GroupRepository {
         'p_group_id': groupId,
         'p_content_type': 'photo',
         'p_photo_path': stored,
+        'p_client_message_id': const Uuid().v4(),
       });
     } catch (e, st) {
       debugPrint('[GroupRepo] sendGroupPhoto failed: $e\n$st');
@@ -526,6 +554,7 @@ class GroupRepository {
         'p_content_type': 'board_invite',
         'p_body': postTitle,
         'p_related_post_id': postId,
+        'p_client_message_id': const Uuid().v4(),
       });
     } catch (e, st) {
       debugPrint('[GroupRepo] sendGroupBoardInvite failed: $e\n$st');

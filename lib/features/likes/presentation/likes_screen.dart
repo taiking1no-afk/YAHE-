@@ -197,7 +197,11 @@ class _SentLikesList extends ConsumerWidget {
     final layout = ref.watch(listGridLayoutProvider(_likesLayoutKey));
     final showAds =
         !(ref.watch(authNotifierProvider).value?.isPremium ?? false);
-    return async.when(
+    return RefreshIndicator(
+      color: AppColors.primary,
+      backgroundColor: AppColors.surface,
+      onRefresh: () async => ref.invalidate(sentLikesProvider),
+      child: async.when(
       loading: () => const Center(
           child: CircularProgressIndicator(color: AppColors.primary)),
       error: (_, __) => const Center(child: Text('読み込みに失敗しました')),
@@ -280,6 +284,7 @@ class _SentLikesList extends ConsumerWidget {
           ),
         );
       },
+      ),
     );
   }
 }
@@ -293,7 +298,11 @@ class _ReceivedLikesList extends ConsumerWidget {
     final layout = ref.watch(listGridLayoutProvider(_likesLayoutKey));
     final showAds = !(user?.isPremium ?? false);
 
-    return async.when(
+    return RefreshIndicator(
+      color: AppColors.primary,
+      backgroundColor: AppColors.surface,
+      onRefresh: () async => ref.invalidate(receivedLikesProvider),
+      child: async.when(
       loading: () => const Center(
           child: CircularProgressIndicator(color: AppColors.primary)),
       error: (_, __) => const Center(child: Text('読み込みに失敗しました')),
@@ -439,6 +448,7 @@ class _ReceivedLikesList extends ConsumerWidget {
           ),
         );
       },
+      ),
     );
   }
 

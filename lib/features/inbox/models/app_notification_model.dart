@@ -11,6 +11,7 @@ enum AppNotificationType {
   boardInviteDeclined,
   levelUp,
   groupOwnershipTransferred,
+  groupMessage,
   unknown;
 
   static AppNotificationType fromString(String value) => switch (value) {
@@ -27,6 +28,7 @@ enum AppNotificationType {
         'level_up' => AppNotificationType.levelUp,
         'group_ownership_transferred' =>
           AppNotificationType.groupOwnershipTransferred,
+        'group_message' => AppNotificationType.groupMessage,
         _ => AppNotificationType.unknown,
       };
 }

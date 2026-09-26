@@ -49,6 +49,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   UserModel? _otherUser;
   Timer? _threadPollTimer;
   bool _matchDissolved = false;
+  bool _loadingOlder = false;
+  bool _hasMoreOlder = true;
 
   @override
   void initState() {
@@ -56,6 +58,66 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     _load();
     _loadOtherUser();
     _loadMatchStatus();
+    _scrollCtrl.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    // 一番上（過去方向）近くまでスクロールしたら、さらに古いメッセージを読み込む
+    if (!_scrollCtrl.hasClients || _loadingOlder || !_hasMoreOlder) return;
+    if (_scrollCtrl.position.pixels <= 200) {
+      _loadOlderMessages();
+    }
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_threadId == null || _messages.isEmpty) return;
+    setState(() => _loadingOlder = true);
+    try {
+      final older = await _repo.fetchMessages(
+        _threadId!,
+        before: _messages.first.createdAt,
+      );
+      if (!mounted) return;
+      // 先頭に挿入すると、挿入した分だけ既存の表示位置がずれて
+      // 読んでいた場所が飛んでしまうため、挿入前後のスクロール量の差分だけ
+      // 補正して見た目の位置を維持する。
+      final oldExtent =
+          _scrollCtrl.hasClients ? _scrollCtrl.position.maxScrollExtent : 0.0;
+      final oldOffset = _scrollCtrl.hasClients ? _scrollCtrl.position.pixels : 0.0;
+      setState(() {
+        if (older.isEmpty) _hasMoreOlder = false;
+        _messages = [...older, ..._messages];
+        _loadingOlder = false;
+      });
+      if (older.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_scrollCtrl.hasClients) return;
+          final newExtent = _scrollCtrl.position.maxScrollExtent;
+          _scrollCtrl.jumpTo(oldOffset + (newExtent - oldExtent));
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingOlder = false);
+    }
+  }
+
+  /// 既に読み込み済みの続きだけを取得して末尾へ追記する
+  /// （毎回全件取り直すと履歴が多いマッチほど遅くなるため）。
+  Future<void> _appendNewMessages() async {
+    if (_threadId == null) return;
+    if (_messages.isEmpty) {
+      final messages = await _repo.fetchMessages(_threadId!);
+      if (mounted) setState(() => _messages = messages);
+      return;
+    }
+    final newer = await _repo.fetchMessages(
+      _threadId!,
+      after: _messages.last.createdAt,
+    );
+    if (newer.isEmpty || !mounted) return;
+    final existingIds = _messages.map((m) => m.messageId).toSet();
+    final toAppend = newer.where((m) => !existingIds.contains(m.messageId));
+    setState(() => _messages = [..._messages, ...toAppend]);
   }
 
   Future<void> _loadMatchStatus() async {
@@ -176,6 +238,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     _threadPollTimer?.cancel();
     _textCtrl.dispose();
     _textFocusNode.dispose();
+    _scrollCtrl.removeListener(_onScroll);
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -255,13 +318,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   void _subscribe(String threadId) {
     _channel?.unsubscribe();
     _channel = _repo.subscribeToThread(threadId, () async {
-      final messages = await _repo.fetchMessages(threadId);
+      await _appendNewMessages();
       final myId = ref.read(authNotifierProvider).value?.userId;
       if (myId != null) await _repo.markRead(threadId, myId);
-      if (mounted) {
-        setState(() => _messages = messages);
-        _scrollToBottom();
-      }
+      if (mounted) _scrollToBottom();
     });
   }
 
@@ -287,8 +347,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       }
     }
     if (_threadId != null) {
-      final messages = await _repo.fetchMessages(_threadId!);
-      if (mounted) setState(() => _messages = messages);
+      await _appendNewMessages();
       _scrollToBottom();
     }
   }
@@ -512,11 +571,26 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                         : ListView.builder(
                             controller: _scrollCtrl,
                             padding: const EdgeInsets.all(16),
-                            itemCount: _messages.length,
+                            itemCount: _messages.length + (_loadingOlder ? 1 : 0),
                             itemBuilder: (context, i) {
-                              final isMe = _messages[i].senderId == myId;
+                              if (_loadingOlder && i == 0) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 12),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: AppColors.primary),
+                                    ),
+                                  ),
+                                );
+                              }
+                              final index = _loadingOlder ? i - 1 : i;
+                              final isMe = _messages[index].senderId == myId;
                               return _MessageBubble(
-                                message: _messages[i],
+                                message: _messages[index],
                                 isMe: isMe,
                                 avatarUrl: isMe ? null : _otherUser?.avatarUrl,
                                 nickname: isMe ? '' : widget.otherNickname,

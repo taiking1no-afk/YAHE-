@@ -42,6 +42,15 @@ serve(async (req) => {
 
     const authUserId = user.id;
 
+    // グループオーナー/イベント主催者を退会前に他のメンバー/参加者へ移譲する。
+    // これを行わないと ON DELETE CASCADE で他人の参加履歴・チャット履歴まで
+    // 巻き添えで消えてしまう（QA v1.106で発見・修正）。ベストエフォート。
+    try {
+      await supabase.rpc('prepare_account_deletion');
+    } catch (_) {
+      // 失敗しても退会処理自体は止めない
+    }
+
     // 可能なら Storage の参照（object名）を先に掃除してから auth.users を削除する
     let storageCleanupCounts: Record<string, number> = {};
     let yaheUserId: string | null = null;

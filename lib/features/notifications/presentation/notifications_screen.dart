@@ -7,6 +7,7 @@ import '../../../core/supabase/supabase_config.dart';
 import '../../auth/presentation/auth_provider.dart';
 import '../../boards/presentation/board_detail_screen.dart';
 import '../../chat/presentation/chat_room_screen.dart';
+import '../../groups/presentation/group_chat_screen.dart';
 import '../../groups/presentation/group_detail_screen.dart';
 import '../../inbox/presentation/inbox_provider.dart';
 import '../../inbox/models/app_notification_model.dart';
@@ -28,6 +29,7 @@ enum NotifType {
   boardInviteDeclined,
   levelUp,
   groupOwnershipTransferred,
+  groupMessage,
 }
 
 NotifType _notifTypeFromInbox(AppNotificationType type) => switch (type) {
@@ -44,6 +46,7 @@ NotifType _notifTypeFromInbox(AppNotificationType type) => switch (type) {
       AppNotificationType.levelUp => NotifType.levelUp,
       AppNotificationType.groupOwnershipTransferred =>
         NotifType.groupOwnershipTransferred,
+      AppNotificationType.groupMessage => NotifType.groupMessage,
       AppNotificationType.unknown => NotifType.announcement,
     };
 
@@ -80,6 +83,10 @@ NotifType _notifTypeFromInbox(AppNotificationType type) => switch (type) {
       AppNotificationType.groupOwnershipTransferred => (
           '👑 オーナー権限を受け取りました',
           '${n.payload['group_name'] as String? ?? 'グループ'}のオーナーになりました'
+        ),
+      AppNotificationType.groupMessage => (
+          '👥 ${n.payload['group_name'] as String? ?? 'グループ'}に新着メッセージ',
+          'グループチャットを確認しましょう'
         ),
       AppNotificationType.match => ('🎉 マッチしました！', 'マッチタブから詳細を見てみましょう'),
       AppNotificationType.unknown => ('お知らせ', ''),
@@ -394,6 +401,7 @@ class _NotifTile extends ConsumerWidget {
         NotifType.boardInviteDeclined =>
           true,
         NotifType.chatMessage => true,
+        NotifType.groupMessage => true,
         _ => false,
       };
 
@@ -409,6 +417,18 @@ class _NotifTile extends ConsumerWidget {
             context,
             MaterialPageRoute(
                 builder: (_) => GroupDetailScreen(groupId: groupId)));
+        return;
+      case NotifType.groupMessage:
+        final groupId = item.payload['group_id'] as String?;
+        final groupName = item.payload['group_name'] as String? ?? 'グループ';
+        if (groupId == null) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                GroupChatScreen(groupId: groupId, groupName: groupName),
+          ),
+        );
         return;
       case NotifType.boardInvite:
       case NotifType.boardJoinRequest:
@@ -512,6 +532,7 @@ class _NotifTile extends ConsumerWidget {
         NotifType.boardInviteDeclined => AppColors.textMuted,
         NotifType.levelUp => AppColors.success,
         NotifType.groupOwnershipTransferred => const Color(0xFF6C63FF),
+        NotifType.groupMessage => const Color(0xFF6C63FF),
       };
 
   String _formatTime(DateTime t) {
@@ -562,6 +583,10 @@ class _Icon extends StatelessWidget {
       NotifType.levelUp => (Icons.trending_up, AppColors.success),
       NotifType.groupOwnershipTransferred => (
           Icons.stars_outlined,
+          const Color(0xFF6C63FF)
+        ),
+      NotifType.groupMessage => (
+          Icons.forum_outlined,
           const Color(0xFF6C63FF)
         ),
     };
