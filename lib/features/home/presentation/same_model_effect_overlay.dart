@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/constants/app_colors.dart';
 
 /// 同車種すれ違いを検知した際に画面を光らせる演出。
@@ -94,7 +95,7 @@ class SameModelEffectOverlayState extends State<SameModelEffectOverlay>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('✨', style: TextStyle(fontSize: 20)),
+                          const Icon(LucideIcons.sparkles, size: 20, color: Color(0xFFB28704)),
                           const SizedBox(width: 8),
                           Text(
                             _label,
@@ -105,7 +106,7 @@ class SameModelEffectOverlayState extends State<SameModelEffectOverlay>
                             ),
                           ),
                           const SizedBox(width: 8),
-                          const Text('✨', style: TextStyle(fontSize: 20)),
+                          const Icon(LucideIcons.sparkles, size: 20, color: Color(0xFFB28704)),
                         ],
                       ),
                     ),

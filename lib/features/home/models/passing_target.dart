@@ -1,3 +1,6 @@
+import 'package:flutter/widgets.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+
 /// すれ違いたい相手の種別（users.passing_target）
 enum PassingTarget { car, bike, both }
 
@@ -13,15 +16,27 @@ extension PassingTargetX on PassingTarget {
     }
   }
 
-  /// ホーム上部の短い表示
+  /// ホーム上部の短い表示（絵文字を除いたテキスト。アイコンは[icons]を別途表示する）
   String get shortLabel {
     switch (this) {
       case PassingTarget.car:
-        return '🚗 車のり';
+        return '車のり';
       case PassingTarget.bike:
-        return '🏍 バイカー';
+        return 'バイカー';
       case PassingTarget.both:
-        return '🚗🏍 どちらも';
+        return 'どちらも';
+    }
+  }
+
+  /// shortLabelの前に並べて表示するアイコン群
+  List<IconData> get icons {
+    switch (this) {
+      case PassingTarget.car:
+        return const [LucideIcons.car];
+      case PassingTarget.bike:
+        return const [LucideIcons.bike];
+      case PassingTarget.both:
+        return const [LucideIcons.car, LucideIcons.bike];
     }
   }
 

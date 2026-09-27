@@ -64,16 +64,34 @@ class PassingTargetHeader extends ConsumerWidget {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          identity.isEmpty ? '愛車を登録してください' : target.shortLabel,
-                          style: TextStyle(
-                            color: identity.isEmpty
-                                ? AppColors.textMuted
-                                : AppColors.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
+                        if (identity.isEmpty)
+                          const Text(
+                            '愛車を登録してください',
+                            style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          )
+                        else
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (final icon in target.icons) ...[
+                                Icon(icon,
+                                    size: 16, color: AppColors.textPrimary),
+                                const SizedBox(width: 4),
+                              ],
+                              Text(
+                                target.shortLabel,
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
                       ],
                     ),
                   ),

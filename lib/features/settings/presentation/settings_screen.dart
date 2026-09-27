@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../core/constants/app_colors.dart';
@@ -263,12 +264,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               Expanded(child: Text('バックグラウンド検知')),
                             ],
                           ),
-                          content: const Text(
-                            'アプリを閉じていても常時すれ違いを検知します。\n\n'
-                            '⚠️ 電池の消耗が通常より増加します。\n'
-                            '⚠️ Androidでは常時通知が表示されます。\n'
-                            '⚠️ iOSでは位置情報を「常に許可」に設定してください。\n\n'
-                            '有効にしますか？',
+                          content: const Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('アプリを閉じていても常時すれ違いを検知します。'),
+                              SizedBox(height: 12),
+                              _WarningLine(text: '電池の消耗が通常より増加します。'),
+                              SizedBox(height: 4),
+                              _WarningLine(text: 'Androidでは常時通知が表示されます。'),
+                              SizedBox(height: 4),
+                              _WarningLine(
+                                  text: 'iOSでは位置情報を「常に許可」に設定してください。'),
+                              SizedBox(height: 12),
+                              Text('有効にしますか？'),
+                            ],
                           ),
                           actions: [
                             TextButton(
@@ -771,6 +781,24 @@ class _GearPlusTile extends StatelessWidget {
           trailing: Icon(Icons.chevron_right, color: accent),
         ),
       ),
+    );
+  }
+}
+
+class _WarningLine extends StatelessWidget {
+  final String text;
+  const _WarningLine({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(LucideIcons.alertTriangle,
+            size: 15, color: AppColors.warning),
+        const SizedBox(width: 6),
+        Expanded(child: Text(text)),
+      ],
     );
   }
 }

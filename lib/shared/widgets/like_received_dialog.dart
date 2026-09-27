@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 
-/// いいね受信時のポップアップ：「❤️あなたの車に興味を持った人がいます」
+/// いいね受信時のポップアップ：「あなたの車に興味を持った人がいます」
 class LikeReceivedDialog {
   LikeReceivedDialog._();
 
@@ -15,7 +16,7 @@ class LikeReceivedDialog {
         backgroundColor: AppColors.surface,
         title: const Row(
           children: [
-            Text('❤️', style: TextStyle(fontSize: 22)),
+            Icon(LucideIcons.heart, size: 22, color: AppColors.primary),
             SizedBox(width: 8),
             Expanded(child: Text('あなたの車に興味を持った人がいます')),
           ],

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:purchases_flutter/errors.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import '../../../core/constants/app_colors.dart';
@@ -97,12 +98,24 @@ class StoreScreen extends ConsumerWidget {
                 color: AppColors.primary.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text(
-                '💡 いいねボタンの隣の🔥ボタンから、渋！/激渋！を消費して'
-                '特定の相手への「いいね」だけを目立たせて送れます。\n'
-                '渋！と激渋！を両方所持している場合、激渋！が優先して使用されます。',
-                style: TextStyle(
-                    color: AppColors.textSecondary, fontSize: 11, height: 1.5),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(LucideIcons.lightbulb,
+                      size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      'いいねボタンの隣の「渋！」ボタンから、渋！/激渋！を消費して'
+                      '特定の相手への「いいね」だけを目立たせて送れます。\n'
+                      '渋！と激渋！を両方所持している場合、激渋！が優先して使用されます。',
+                      style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                          height: 1.5),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 12),
@@ -128,7 +141,7 @@ class StoreScreen extends ConsumerWidget {
         backgroundColor: AppColors.surface,
         title: Row(
           children: [
-            Text(type.emoji, style: const TextStyle(fontSize: 24)),
+            Icon(type.icon, size: 24, color: AppColors.primary),
             const SizedBox(width: 8),
             Text(type.label),
           ],
@@ -242,7 +255,7 @@ class StoreScreen extends ConsumerWidget {
         backgroundColor: AppColors.surface,
         title: Row(
           children: [
-            Text(type.emoji, style: const TextStyle(fontSize: 24)),
+            Icon(type.icon, size: 24, color: AppColors.primary),
             const SizedBox(width: 8),
             const Text('購入完了'),
           ],
@@ -323,7 +336,7 @@ class _GearRReportBanner extends StatelessWidget {
         ),
         child: const Row(
           children: [
-            Text('📊', style: TextStyle(fontSize: 22)),
+            Icon(LucideIcons.barChart3, size: 22, color: Color(0xFF6C63FF)),
             SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -521,14 +534,14 @@ class _InventoryCard extends StatelessWidget {
         backgroundColor: AppColors.surfaceCard,
         title: Row(
           children: [
-            Text(state.type.emoji, style: const TextStyle(fontSize: 22)),
+            Icon(state.type.icon, size: 22, color: AppColors.primary),
             const SizedBox(width: 8),
             Text(state.type.label),
           ],
         ),
         content: const Text(
-          '使用はいいね横の🔥ボタンで使用できるよ！\n'
-          'YAHE画面・プロフィール画面のいいねボタンの隣にある🔥ボタンから、'
+          '使用はいいね横の「渋！」ボタンで使用できるよ！\n'
+          'YAHE画面・プロフィール画面のいいねボタンの隣にある「渋！」ボタンから、'
           '特定の相手への「いいね」をブーストして送れます。',
           style: TextStyle(height: 1.5),
         ),
@@ -566,7 +579,7 @@ class _InventoryCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(state.type.emoji, style: const TextStyle(fontSize: 18)),
+                Icon(state.type.icon, size: 18, color: AppColors.primary),
                 const Spacer(),
                 if (!sendOnlyHint &&
                     (state.type.isTimedItem || state.isBoostActive))
@@ -638,7 +651,7 @@ class _InventoryCard extends StatelessWidget {
               )
             else if (sendOnlyHint)
               const Text(
-                '🔥いいね画面から使用',
+                'いいね画面から使用',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -672,7 +685,7 @@ class _ShopItem extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Text(type.emoji, style: const TextStyle(fontSize: 28)),
+          Icon(type.icon, size: 28, color: AppColors.primary),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

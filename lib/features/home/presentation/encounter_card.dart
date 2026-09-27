@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/focal_point.dart';
 import '../../../shared/widgets/public_badge.dart';
@@ -9,9 +10,9 @@ import '../../vehicle/models/vehicle.dart';
 import '../models/encounter.dart';
 
 class BoostBadge extends StatelessWidget {
-  final String emoji;
+  final IconData icon;
   final String label;
-  const BoostBadge({super.key, required this.emoji, required this.label});
+  const BoostBadge({super.key, required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -23,7 +24,7 @@ class BoostBadge extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 10)),
+            Icon(icon, size: 10, color: Colors.white),
             const SizedBox(width: 3),
             Text(label,
                 style: const TextStyle(
@@ -414,7 +415,8 @@ class _VehicleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final typeLabel = vehicle.vehicleType == VehicleType.bike ? '🏍' : '🚗';
+    final typeIcon =
+        vehicle.vehicleType == VehicleType.bike ? LucideIcons.bike : LucideIcons.car;
     final tags = vehicle.tags.take(3).toList();
 
     return Padding(
@@ -446,7 +448,8 @@ class _VehicleRow extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Text(typeLabel, style: const TextStyle(fontSize: 12)),
+                        Icon(typeIcon,
+                            size: 12, color: AppColors.textPrimary),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -619,7 +622,8 @@ class BoostLikeButton extends StatelessWidget {
               : Border.all(color: AppColors.border, width: 1.5),
         ),
         child: Center(
-          child: Text('🔥', style: TextStyle(fontSize: compact ? 14 : 20)),
+          child: Icon(LucideIcons.flame,
+              size: compact ? 14 : 20, color: AppColors.primary),
         ),
       ),
     );
@@ -721,7 +725,7 @@ class _SameModelBadge extends StatelessWidget {
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('✨', style: TextStyle(fontSize: 9)),
+          Icon(LucideIcons.sparkles, size: 9, color: Color(0xFFB28704)),
           SizedBox(width: 2),
           Text(
             '同車種',

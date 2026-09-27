@@ -50,45 +50,46 @@ NotifType _notifTypeFromInbox(AppNotificationType type) => switch (type) {
       AppNotificationType.unknown => NotifType.announcement,
     };
 
+// タイトルの先頭にはアイコン(_Icon)を別途表示するため、絵文字は付けない。
 (String, String) _inboxTitleBody(AppNotificationModel n) => switch (n.type) {
       AppNotificationType.likeReceived => switch (n.payload['boost_type']) {
-          'geki_shibu' => ('🌟 激渋！が届きました', '特別ないいねです。あなたの車に興味を持った人がいます'),
-          'shibu' => ('🔥 渋！が届きました', '特別ないいねです。あなたの車に興味を持った人がいます'),
-          _ => ('❤️ いいねが届きました', 'あなたの車に興味を持った人がいます'),
+          'geki_shibu' => ('激渋！が届きました', '特別ないいねです。あなたの車に興味を持った人がいます'),
+          'shibu' => ('渋！が届きました', '特別ないいねです。あなたの車に興味を持った人がいます'),
+          _ => ('いいねが届きました', 'あなたの車に興味を持った人がいます'),
         },
       AppNotificationType.customInterest => (
-          '🔧 気になるカスタムがあります',
+          '気になるカスタムがあります',
           'あなたのカスタムに興味を持った人がいます'
         ),
-      AppNotificationType.chatMessage => ('💬 新着メッセージ', 'チャットを確認しましょう'),
-      AppNotificationType.groupInvite => ('👥 グループに招待されました', 'グループの詳細を確認しましょう'),
+      AppNotificationType.chatMessage => ('新着メッセージ', 'チャットを確認しましょう'),
+      AppNotificationType.groupInvite => ('グループに招待されました', 'グループの詳細を確認しましょう'),
       AppNotificationType.groupJoinRequest => (
-          '👥 参加申請が届きました',
+          '参加申請が届きました',
           'グループの参加申請を確認しましょう'
         ),
       AppNotificationType.groupInviteDeclined => (
-          '👥 招待が辞退されました',
+          '招待が辞退されました',
           'グループへの招待が辞退されました'
         ),
-      AppNotificationType.boardInvite => ('📋 掲示板に招待されました', '募集の詳細を確認しましょう'),
+      AppNotificationType.boardInvite => ('掲示板に招待されました', '募集の詳細を確認しましょう'),
       AppNotificationType.boardJoinRequest => (
-          '📋 参加申請が届きました',
+          '参加申請が届きました',
           '募集の参加申請を確認しましょう'
         ),
       AppNotificationType.boardInviteDeclined => (
-          '📋 招待が辞退されました',
+          '招待が辞退されました',
           '募集への招待が辞退されました'
         ),
-      AppNotificationType.levelUp => ('⬆️ レベルアップ！', '相手との関係レベルが上がりました'),
+      AppNotificationType.levelUp => ('レベルアップ！', '相手との関係レベルが上がりました'),
       AppNotificationType.groupOwnershipTransferred => (
-          '👑 オーナー権限を受け取りました',
+          'オーナー権限を受け取りました',
           '${n.payload['group_name'] as String? ?? 'グループ'}のオーナーになりました'
         ),
       AppNotificationType.groupMessage => (
-          '👥 ${n.payload['group_name'] as String? ?? 'グループ'}に新着メッセージ',
+          '${n.payload['group_name'] as String? ?? 'グループ'}に新着メッセージ',
           'グループチャットを確認しましょう'
         ),
-      AppNotificationType.match => ('🎉 マッチしました！', 'マッチタブから詳細を見てみましょう'),
+      AppNotificationType.match => ('マッチしました！', 'マッチタブから詳細を見てみましょう'),
       AppNotificationType.unknown => ('お知らせ', ''),
     };
 
@@ -136,7 +137,7 @@ final notificationsProvider =
       final t = DateTime.parse(e['time'] as String).toLocal();
       items.add(NotifItem(
         type: NotifType.encounter,
-        title: '⚡ YAHEしたよ！',
+        title: 'YAHEしたよ！',
         body: 'どんな人か確認してみよう',
         time: t,
       ));
@@ -156,7 +157,7 @@ final notificationsProvider =
       final t = DateTime.parse(m['matched_at'] as String).toLocal();
       items.add(NotifItem(
         type: NotifType.match,
-        title: '🎉 マッチしました！',
+        title: 'マッチしました！',
         body: 'マッチタブからSNSで繋がりましょう',
         time: t,
       ));

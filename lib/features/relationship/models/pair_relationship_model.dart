@@ -1,3 +1,6 @@
+import 'package:flutter/widgets.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+
 class PairRelationshipModel {
   final int totalCount;
   final int driveTogetherCount;
@@ -42,10 +45,10 @@ extension PairAlbumMilestoneTypeX on PairAlbumMilestoneType {
         PairAlbumMilestoneType.eventTogether => '一緒にイベント・オフ会に参加',
       };
 
-  String get emoji => switch (this) {
-        PairAlbumMilestoneType.firstEncounter => '⚡',
-        PairAlbumMilestoneType.touringTogether => '🚗',
-        PairAlbumMilestoneType.eventTogether => '🎉',
+  IconData get icon => switch (this) {
+        PairAlbumMilestoneType.firstEncounter => LucideIcons.zap,
+        PairAlbumMilestoneType.touringTogether => LucideIcons.car,
+        PairAlbumMilestoneType.eventTogether => LucideIcons.partyPopper,
       };
 }
 

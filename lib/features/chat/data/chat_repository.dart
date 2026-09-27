@@ -143,10 +143,13 @@ class ChatRepository {
     }
   }
 
+  // 一覧の最終メッセージプレビューはプレーンテキストの一覧項目として
+  // 表示されるため、絵文字ではなく角括弧の文字ラベルで種別を示す。
   String _previewOf(ChatMessageModel m) => switch (m.contentType) {
-        ChatContentType.photo => '📷 写真',
-        ChatContentType.sns => '🔗 SNSアカウント',
-        ChatContentType.boardInvite => '🚗 ${m.body ?? 'ツーリング・イベント'}に誘いました',
+        ChatContentType.photo => '[写真]',
+        ChatContentType.sns => '[SNSアカウント]',
+        ChatContentType.boardInvite =>
+          '[${m.body ?? 'ツーリング・イベント'}に誘いました]',
         ChatContentType.quickReply => m.body ?? '',
         ChatContentType.text => m.body ?? '',
       };

@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/external_link.dart';
 import '../../../core/constants/app_constants.dart';
@@ -486,7 +487,7 @@ class _MatchVehicleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final typeLabel = vehicle.vehicleType == VehicleType.bike ? '🏍' : '🚗';
+    final typeIcon = vehicle.vehicleType == VehicleType.bike ? LucideIcons.bike : LucideIcons.car;
     final tags = vehicle.tags.take(3).toList();
 
     return Padding(
@@ -515,7 +516,7 @@ class _MatchVehicleRow extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Text(typeLabel, style: const TextStyle(fontSize: 12)),
+                        Icon(typeIcon, size: 12, color: AppColors.textPrimary),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(

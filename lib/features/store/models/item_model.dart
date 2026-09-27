@@ -1,3 +1,6 @@
+import 'package:flutter/widgets.dart';
+import 'package:lucide_icons/lucide_icons.dart';
+
 enum ItemType { nitro, shibu, superNitro, gekiShibu, gearPlus24h }
 
 extension ItemTypeX on ItemType {
@@ -17,12 +20,12 @@ extension ItemTypeX on ItemType {
         ItemType.gearPlus24h => '24時間ギア＋',
       };
 
-  String get emoji => switch (this) {
-        ItemType.nitro => '⚡',
-        ItemType.shibu => '🔥',
-        ItemType.superNitro => '💥',
-        ItemType.gekiShibu => '🌟',
-        ItemType.gearPlus24h => '🚀',
+  IconData get icon => switch (this) {
+        ItemType.nitro => LucideIcons.zap,
+        ItemType.shibu => LucideIcons.flame,
+        ItemType.superNitro => LucideIcons.zap,
+        ItemType.gekiShibu => LucideIcons.star,
+        ItemType.gearPlus24h => LucideIcons.rocket,
       };
 
   String get description => switch (this) {

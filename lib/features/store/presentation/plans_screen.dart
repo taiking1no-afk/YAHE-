@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:purchases_flutter/errors.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import '../../../core/constants/app_colors.dart';
@@ -52,11 +53,11 @@ class PlansScreen extends ConsumerWidget {
               color: AppColors.textMuted,
               isCurrent: currentPlan == 'free' && paidPlan == 'free',
               features: const [
-                '✓ すれ違い検知・通知',
-                '✓ いいね 10回/日',
-                '✓ すれ違い履歴 24時間',
-                '✓ 愛車ガード 3ヶ所',
-                '✓ 愛車登録 2台',
+                (LucideIcons.check, 'すれ違い検知・通知'),
+                (LucideIcons.check, 'いいね 10回/日'),
+                (LucideIcons.check, 'すれ違い履歴 24時間'),
+                (LucideIcons.check, '愛車ガード 3ヶ所'),
+                (LucideIcons.check, '愛車登録 2台'),
               ],
               onSelect: null,
             ),
@@ -70,8 +71,8 @@ class PlansScreen extends ConsumerWidget {
               isCurrent: paidPlan == 'pit_in',
               badge: 'お得',
               features: const [
-                '⚡ ニトロ 毎月1個配布',
-                '🔥 渋！ 毎月10個配布',
+                (LucideIcons.zap, 'ニトロ 毎月1個配布'),
+                (LucideIcons.flame, '渋！ 毎月10個配布'),
               ],
               note: currentPlan == 'gear_plus' || currentPlan == 'gear_r'
                   ? 'Gear+以上に加入中は不要です（同等以上のアイテムが毎月届きます）'
@@ -103,12 +104,12 @@ class PlansScreen extends ConsumerWidget {
                   ? '初月無料'
                   : '人気',
               features: const [
-                '⚡ いいね 無制限',
-                '⚡ すれ違い履歴 7日間',
-                '⚡ 愛車ガード 無制限',
-                '⚡ 愛車登録 無制限',
-                '🔥 ニトロ 毎月1個付き',
-                '🔥 渋！ 毎月10個付き',
+                (LucideIcons.zap, 'いいね 無制限'),
+                (LucideIcons.zap, 'すれ違い履歴 7日間'),
+                (LucideIcons.zap, '愛車ガード 無制限'),
+                (LucideIcons.zap, '愛車登録 無制限'),
+                (LucideIcons.flame, 'ニトロ 毎月1個付き'),
+                (LucideIcons.flame, '渋！ 毎月10個付き'),
               ],
               note: user != null && user.shouldPromptGearPlusTrial
                   ? '初回のみ1ヶ月無料。期間終了後は解約しない限り月額¥500に自動更新されます'
@@ -130,11 +131,11 @@ class PlansScreen extends ConsumerWidget {
               isCurrent: paidPlan == 'gear_r',
               badge: 'ビジネス向け',
               features: const [
-                '💥 スーパーニトロ 毎月1個付き',
-                '🌟 激渋！ 毎月10個付き',
-                '🏆 認証バッジ（購入後すぐ設定可能）',
-                '📊 インサイトアクティビティ（いつでも見られるアクセス解析）',
-                'Gear+ の全機能を含む',
+                (LucideIcons.zap, 'スーパーニトロ 毎月1個付き'),
+                (LucideIcons.star, '激渋！ 毎月10個付き'),
+                (LucideIcons.trophy, '認証バッジ（購入後すぐ設定可能）'),
+                (LucideIcons.barChart3, 'インサイトアクティビティ（いつでも見られるアクセス解析）'),
+                (LucideIcons.check, 'Gear+ の全機能を含む'),
               ],
               note: '認証バッジは自由にラベルを設定できます（例：インフルエンサー、ユーチューバー）',
               onSelect: paidPlan == 'gear_r'
@@ -154,7 +155,7 @@ class PlansScreen extends ConsumerWidget {
               ),
               child: const Row(
                 children: [
-                  Text('🚀', style: TextStyle(fontSize: 20)),
+                  Icon(LucideIcons.rocket, size: 20, color: AppColors.primary),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text.rich(
@@ -312,7 +313,7 @@ class PlansScreen extends ConsumerWidget {
         backgroundColor: AppColors.surface,
         title: const Row(
           children: [
-            Text('💥', style: TextStyle(fontSize: 24)),
+            Icon(LucideIcons.zap, size: 24, color: Color(0xFF6C63FF)),
             SizedBox(width: 8),
             Text('Gear R へ加入'),
           ],
@@ -367,13 +368,14 @@ class PlansScreen extends ConsumerWidget {
         backgroundColor: AppColors.surface,
         title: Row(
           children: [
-            Text(
+            Icon(
                 isPitIn
-                    ? '🏁'
+                    ? LucideIcons.flag
                     : isGearR
-                        ? '💥'
-                        : '⚡',
-                style: const TextStyle(fontSize: 24)),
+                        ? LucideIcons.zap
+                        : LucideIcons.zap,
+                size: 24,
+                color: AppColors.primary),
             const SizedBox(width: 8),
             Text('$planName に加入しました！'),
           ],
@@ -450,7 +452,7 @@ class _TrialBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Text('🎁', style: TextStyle(fontSize: 22)),
+          const Icon(LucideIcons.gift, size: 22, color: AppColors.primary),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -491,7 +493,7 @@ class _GrantBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Text('✨', style: TextStyle(fontSize: 22)),
+          const Icon(LucideIcons.sparkles, size: 22, color: Color(0xFF6C63FF)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -515,7 +517,7 @@ class _PlanCard extends StatelessWidget {
   final Color color;
   final bool isCurrent;
   final String? badge;
-  final List<String> features;
+  final List<(IconData, String)> features;
   final String? note;
   final VoidCallback? onSelect;
   final String? ctaLabel;
@@ -592,11 +594,20 @@ class _PlanCard extends StatelessWidget {
           const SizedBox(height: 14),
           ...features.map((f) => Padding(
                 padding: const EdgeInsets.only(bottom: 6),
-                child: Text(f,
-                    style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                        height: 1.4)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(f.$1, size: 14, color: AppColors.textSecondary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(f.$2,
+                          style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 13,
+                              height: 1.4)),
+                    ),
+                  ],
+                ),
               )),
           if (note != null) ...[
             const SizedBox(height: 8),

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/ads/att_service.dart';
@@ -35,33 +36,33 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   static const _pages = [
     _Page(
-      emoji: '🚗',
+      icon: LucideIcons.car,
       title: 'YAHEへようこそ',
       body: '改造車・スポーツカーオーナー同士が\n公道で「すれ違った瞬間」を記録する\nマッチングアプリです。',
     ),
     _Page(
-      emoji: '⚡',
+      icon: LucideIcons.zap,
       title: 'すれ違いを検知',
       body:
           'アプリを起動したまま走ると\nBluetooth + GPSで近くのYAHEユーザーを検知。\nすれ違い時刻が記録されます（位置情報は近傍判定のために最新位置のみを一時利用し、他人には閲覧できません）。',
     ),
     _Page(
-      emoji: '❤️',
+      icon: LucideIcons.heart,
       title: 'いいねしてマッチ',
       body: 'タイムラインで気になった車にいいね！\n相手もいいねしたら「マッチ成立」。\nそのままSNSで繋がれます。',
     ),
     _Page(
-      emoji: '🛡️',
+      icon: LucideIcons.shield,
       title: 'プライバシーを守る',
       body: '自宅・職場周辺は「愛車ガード」で\nすれ違い記録をOFF。\n個人情報はマッチ後のみ相手に開示されます。',
     ),
     _Page(
-      emoji: '🛞',
+      icon: LucideIcons.circle,
       title: '安全運転でお願いします',
       body: 'すれ違いの検知・記録は\nすべて自動で行われます。\n\n運転中は絶対にスマホを操作しないでください。\n確認は停車してから。',
     ),
     _Page(
-      emoji: '🚀',
+      icon: LucideIcons.rocket,
       title: '準備完了！',
       body: 'まず愛車を登録して、\nドライブに出かけよう！\nすれ違いを楽しんで。',
     ),
@@ -163,7 +164,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _runPermissionSteps() async {
     // ── STEP 1: 位置情報 ──
     await _showPermissionStep(
-      emoji: '📍',
+      icon: LucideIcons.mapPin,
       title: '位置情報の許可',
       body: 'すれ違いを検知するために位置情報を使用します。\n\n'
           'この機能は、アプリを閉じているときや使用していないときも、'
@@ -193,7 +194,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     // ── STEP 2: Bluetooth ──
     await _showPermissionStep(
-      emoji: '📡',
+      icon: LucideIcons.bluetooth,
       title: 'Bluetoothの許可',
       body: 'すれ違ったユーザーを正確に検知するために\nBluetoothが必要です。',
       buttonLabel: '続ける',
@@ -217,7 +218,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     await NotificationService().initialize();
 
     final notifGranted = await _showPermissionStep(
-      emoji: '🔔',
+      icon: LucideIcons.bell,
       title: '通知の許可',
       body: 'すれ違い通知やマッチ通知を受け取れます。\n\n'
           'ドライブに出たくなる定期通知もお届けします。\n'
@@ -243,7 +244,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     // ── STEP 4: ATT（広告トラッキング・iOSのみ）──
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       await _showPermissionStep(
-        emoji: '📣',
+        icon: LucideIcons.megaphone,
         title: 'トラッキングの許可',
         body: '無料プラン向けの広告を適切に表示するため、\n'
             'トラッキングの許可をお願いします。\n\n'
@@ -260,7 +261,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<bool> _showPermissionStep({
-    required String emoji,
+    required IconData icon,
     required String title,
     required String body,
     required String buttonLabel,
@@ -278,7 +279,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         backgroundColor: AppColors.surface,
         title: Row(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 28)),
+            Icon(icon, size: 28, color: AppColors.primary),
             const SizedBox(width: 10),
             Expanded(child: Text(title, style: const TextStyle(fontSize: 18))),
           ],
@@ -335,7 +336,7 @@ class _PageView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(page.emoji, style: const TextStyle(fontSize: 80)),
+          Icon(page.icon, size: 80, color: AppColors.primary),
           const SizedBox(height: 32),
           Text(
             page.title,
@@ -363,8 +364,8 @@ class _PageView extends StatelessWidget {
 }
 
 class _Page {
-  final String emoji;
+  final IconData icon;
   final String title;
   final String body;
-  const _Page({required this.emoji, required this.title, required this.body});
+  const _Page({required this.icon, required this.title, required this.body});
 }

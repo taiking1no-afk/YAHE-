@@ -76,8 +76,8 @@ class _PairAlbumScreenState extends State<PairAlbumScreen> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(e.milestoneType.emoji,
-                              style: const TextStyle(fontSize: 20)),
+                          Icon(e.milestoneType.icon,
+                              size: 20, color: AppColors.textPrimary),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Container(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/focal_point.dart';
@@ -358,14 +359,27 @@ class _VehicleCard extends StatelessWidget {
                               color: AppColors.primary.withOpacity(0.08),
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: Text(
-                              vehicle.vehicleType == VehicleType.bike
-                                  ? '🏍 バイク'
-                                  : '🚗 車',
-                              style: const TextStyle(
-                                  fontSize: 11,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  vehicle.vehicleType == VehicleType.bike
+                                      ? LucideIcons.bike
+                                      : LucideIcons.car,
+                                  size: 12,
                                   color: AppColors.primary,
-                                  fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  vehicle.vehicleType == VehicleType.bike
+                                      ? 'バイク'
+                                      : '車',
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ],
                             ),
                           ),
                           Expanded(

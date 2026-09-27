@@ -64,7 +64,7 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
     if (!mounted) return;
     setState(() => _testModeEnabled = value);
     _appendLog(
-      value ? '🧪 テストモードON（同一相手: 5分間隔）' : '✅ テストモードOFF（同一相手: 1日1回）',
+      value ? '[テスト] テストモードON（同一相手: 5分間隔）' : '[OK] テストモードOFF（同一相手: 1日1回）',
     );
   }
 
@@ -147,7 +147,7 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
         _nearestZoneLabel = nearLabel;
       });
 
-      _appendLog(isIn ? '⛔ プライバシーゾーン内 → すれ違い記録なし' : '✅ ゾーン外 → すれ違い記録OK');
+      _appendLog(isIn ? '[スキップ] プライバシーゾーン内 → すれ違い記録なし' : '[OK] ゾーン外 → すれ違い記録OK');
       if (minDist != null) {
         _appendLog('最近傍ゾーン($nearLabel): ${minDist.toStringAsFixed(1)}m');
       }
@@ -168,7 +168,7 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
 
     final partnerId = _testPartnerCtrl.text.trim();
     if (partnerId.isEmpty || partnerId == _kTestPartnerUserId) {
-      _appendLog('⚠️ テスト相手のユーザーIDを入力してください');
+      _appendLog('[注意] テスト相手のユーザーIDを入力してください');
       return;
     }
 
@@ -182,7 +182,7 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
           lng: _currentPos!.longitude,
         );
         if (inZone) {
-          _appendLog('⛔ プライバシーゾーン内のためすれ違いはスキップされました');
+          _appendLog('[スキップ] プライバシーゾーン内のためすれ違いはスキップされました');
           if (mounted) setState(() => _loading = false);
           return;
         }
@@ -203,7 +203,7 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
       // タイムライン更新
       ref.invalidate(encountersProvider);
 
-      _appendLog('✅ テストすれ違いを登録 + 通知送信（$timeStr）');
+      _appendLog('[OK] テストすれ違いを登録 + 通知送信（$timeStr）');
     } catch (e) {
       _appendLog('すれ違い登録エラー: $e');
     } finally {
@@ -215,7 +215,7 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
   Future<void> _testNotificationOnly() async {
     final timeStr = DateFormat('HH:mm').format(DateTime.now());
     await NotificationService().showEncounterNotification(timeStr: timeStr);
-    _appendLog('🔔 テスト通知を送信（$timeStr）');
+    _appendLog('[通知] テスト通知を送信（$timeStr）');
   }
 
   // ─── 通知権限の状態を確認（Android 13+ の POST_NOTIFICATIONS 等）───
@@ -223,10 +223,10 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
     final status = await Permission.notification.status;
     setState(() => _notifPermStatus = status);
     if (status.isGranted) {
-      _appendLog('✅ 通知権限(OS全体): 許可済み');
+      _appendLog('[OK] 通知権限(OS全体): 許可済み');
     } else {
       _appendLog(
-          '❌ 通知権限(OS全体): $status → showEncounterNotification が呼ばれても画面には出ません');
+          '[NG] 通知権限(OS全体): $status → showEncounterNotification が呼ばれても画面には出ません');
       if (status.isPermanentlyDenied) {
         _appendLog('→ 完全拒否状態のため、アプリの設定画面から手動でオンにする必要があります');
       }
@@ -240,8 +240,8 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
     if (androidPlugin != null) {
       final enabled = await androidPlugin.areNotificationsEnabled();
       _appendLog(enabled == true
-          ? '✅ アプリの通知(ネイティブ確認): 有効'
-          : '❌ アプリの通知(ネイティブ確認): 無効 → 設定→アプリ→YAHE→通知 で有効にしてください');
+          ? '[OK] アプリの通知(ネイティブ確認): 有効'
+          : '[NG] アプリの通知(ネイティブ確認): 無効 → 設定→アプリ→YAHE→通知 で有効にしてください');
 
       final channels = await androidPlugin.getNotificationChannels();
       final matches =
@@ -260,9 +260,9 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
     try {
       final result =
           await SupabaseConfig.client.from('users').select('user_id').limit(1);
-      _appendLog('✅ Supabase接続OK（users: ${result.length}件）');
+      _appendLog('[OK] Supabase接続OK（users: ${result.length}件）');
     } catch (e) {
-      _appendLog('❌ Supabase接続エラー: $e');
+      _appendLog('[NG] Supabase接続エラー: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -323,7 +323,7 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
                     : '未取得'),
             if (_isInZone != null) ...[
               _InfoRow(
-                  'ゾーン内判定', _isInZone! ? '⛔ ゾーン内（すれ違い記録なし）' : '✅ ゾーン外（記録OK）'),
+                  'ゾーン内判定', _isInZone! ? '[スキップ] ゾーン内（すれ違い記録なし）' : '[OK] ゾーン外（記録OK）'),
               if (_nearestZoneDistanceM != null)
                 _InfoRow('最近傍ゾーン',
                     '$_nearestZoneLabel: ${_nearestZoneDistanceM!.toStringAsFixed(0)}m'),
@@ -459,13 +459,13 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _InfoRow('Bluetoothアダプタ', '$adapterState'),
-                  _InfoRow('検知サービス起動', ble.isRunning ? '✅ 起動中' : '❌ 未起動'),
-                  _InfoRow('スキャン中', isScanning ? '✅ はい' : '❌ いいえ'),
+                  _InfoRow('検知サービス起動', ble.isRunning ? '[OK] 起動中' : '[NG] 未起動'),
+                  _InfoRow('スキャン中', isScanning ? '[OK] はい' : '[NG] いいえ'),
                   _InfoRow(
                       'アドバタイズ(自分の発信)',
                       ble.lastAdvertiseError == null
-                          ? '✅ 成功'
-                          : '❌ 失敗: ${ble.lastAdvertiseError}'),
+                          ? '[OK] 成功'
+                          : '[NG] 失敗: ${ble.lastAdvertiseError}'),
                   _InfoRow('スキャン受信数(累計)', '${ble.scanResultCount}件'),
                   _InfoRow(
                       '直近の受信',

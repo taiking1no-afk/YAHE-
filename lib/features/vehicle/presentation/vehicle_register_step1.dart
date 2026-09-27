@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../shared/widgets/step_header.dart';
@@ -140,13 +141,15 @@ class _VehicleTypeSelector extends StatelessWidget {
     return Row(
       children: [
         _TypeButton(
-          label: '🚗  車',
+          icon: LucideIcons.car,
+          label: '車',
           isSelected: selected == VehicleType.car,
           onTap: () => onSelect(VehicleType.car),
         ),
         const SizedBox(width: 10),
         _TypeButton(
-          label: '🏍  バイク',
+          icon: LucideIcons.bike,
+          label: 'バイク',
           isSelected: selected == VehicleType.bike,
           onTap: () => onSelect(VehicleType.bike),
         ),
@@ -156,14 +159,19 @@ class _VehicleTypeSelector extends StatelessWidget {
 }
 
 class _TypeButton extends StatelessWidget {
+  final IconData icon;
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
   const _TypeButton(
-      {required this.label, required this.isSelected, required this.onTap});
+      {required this.icon,
+      required this.label,
+      required this.isSelected,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    final color = isSelected ? AppColors.primary : AppColors.textSecondary;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -179,13 +187,20 @@ class _TypeButton extends StatelessWidget {
             width: isSelected ? 2 : 1,
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? AppColors.primary : AppColors.textSecondary,
-            fontSize: 15,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.normal,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 15,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.normal,
+              ),
+            ),
+          ],
         ),
       ),
     );

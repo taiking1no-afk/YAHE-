@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../shared/providers/global_realtime_providers.dart';
@@ -222,6 +223,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ref,
                           encounter,
                           occasionEmoji: isFirstEncounter ? '⚡' : '🎉',
+                          occasionIcon: isFirstEncounter
+                              ? LucideIcons.zap
+                              : LucideIcons.partyPopper,
                           occasionTitle:
                               isFirstEncounter ? '初めてのすれ違い！' : 'マッチしました！',
                         );
@@ -468,6 +472,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetRef ref,
     dynamic encounter, {
     String occasionEmoji = '🎉',
+    IconData occasionIcon = LucideIcons.partyPopper,
     String occasionTitle = 'マッチしました！',
   }) async {
     final me = ref.read(authNotifierProvider).value;
@@ -477,6 +482,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await shareEncounter(
       context: context,
       occasionEmoji: occasionEmoji,
+      occasionIcon: occasionIcon,
       occasionTitle: occasionTitle,
       myUser: me,
       myVehicle: myVehicle,
@@ -627,7 +633,7 @@ class _ActiveBoostBanner extends ConsumerWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(item.type.emoji, style: const TextStyle(fontSize: 14)),
+                Icon(item.type.icon, size: 14, color: AppColors.primary),
                 const SizedBox(width: 4),
                 Text(
                   '${item.type.label}使用中（残り${item.remainingLabel}）',
@@ -656,7 +662,7 @@ class _EmptyState extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 40),
         child: Column(
           children: [
-            const Text('🚗', style: TextStyle(fontSize: 64)),
+            const Icon(LucideIcons.car, size: 64, color: AppColors.textPrimary),
             const SizedBox(height: 20),
             const Text(
               'まだYAHEしてないよ！',
@@ -667,13 +673,19 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            const Text(
-              'ドライブしてYAHEしよう 🏍',
-              style: TextStyle(
-                color: AppColors.primary,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+            const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'ドライブしてYAHEしよう ',
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Icon(LucideIcons.bike, size: 16, color: AppColors.primary),
+              ],
             ),
             const SizedBox(height: 12),
             const Text(

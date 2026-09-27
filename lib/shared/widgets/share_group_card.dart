@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/constants/app_colors.dart';
@@ -129,12 +130,19 @@ class _GroupShareCard extends StatelessWidget {
               color: AppColors.primary.withOpacity(0.15),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Text(
-              '👥 ${group.memberCount}人が参加中',
-              style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 30,
-                  fontWeight: FontWeight.w800),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(LucideIcons.users, size: 26, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  '${group.memberCount}人が参加中',
+                  style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 40),

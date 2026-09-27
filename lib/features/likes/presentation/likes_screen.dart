@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../shared/providers/global_realtime_providers.dart';
 import '../../../shared/providers/list_grid_layout_provider.dart';
@@ -467,6 +468,7 @@ Future<void> _shareLikeEntryMatch(
   await shareEncounter(
     context: context,
     occasionEmoji: '🎉',
+    occasionIcon: LucideIcons.partyPopper,
     occasionTitle: 'マッチしました！',
     myUser: me,
     myVehicle: myVehicle,
@@ -592,9 +594,9 @@ class _LikeEntryTile extends ConsumerWidget {
                             if (entry.boostType != null) ...[
                               const SizedBox(height: 4),
                               BoostBadge(
-                                emoji: entry.boostType == 'geki_shibu'
-                                    ? '🌟'
-                                    : '🔥',
+                                icon: entry.boostType == 'geki_shibu'
+                                    ? LucideIcons.star
+                                    : LucideIcons.flame,
                                 label: entry.boostType == 'geki_shibu'
                                     ? '激渋！'
                                     : '渋！',
@@ -805,7 +807,9 @@ class _LikeEntryGridCard extends ConsumerWidget {
                     top: 6,
                     left: 6,
                     child: BoostBadge(
-                      emoji: entry.boostType == 'geki_shibu' ? '🌟' : '🔥',
+                      icon: entry.boostType == 'geki_shibu'
+                          ? LucideIcons.star
+                          : LucideIcons.flame,
                       label: entry.boostType == 'geki_shibu' ? '激渋！' : '渋！',
                     ),
                   ),
@@ -955,7 +959,7 @@ class _VehicleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final typeLabel = vehicle.vehicleType == VehicleType.bike ? '🏍' : '🚗';
+    final typeIcon = vehicle.vehicleType == VehicleType.bike ? LucideIcons.bike : LucideIcons.car;
     final tags = vehicle.tags.take(3).toList();
 
     return Padding(
@@ -984,7 +988,7 @@ class _VehicleRow extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Text(typeLabel, style: const TextStyle(fontSize: 12)),
+                        Icon(typeIcon, size: 12, color: AppColors.textPrimary),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(

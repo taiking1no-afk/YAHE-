@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/external_link.dart';
@@ -399,8 +400,8 @@ class LimitedProfileSheet extends StatelessWidget {
                                       minimumSize: const Size(52, 52),
                                       padding: EdgeInsets.zero,
                                     ),
-                                    child: const Text('🔥',
-                                        style: TextStyle(fontSize: 20)),
+                                    child: const Icon(LucideIcons.flame,
+                                        size: 20, color: AppColors.primary),
                                   ),
                                 ],
                               ],

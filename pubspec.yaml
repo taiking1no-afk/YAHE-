@@ -93,6 +93,9 @@ dependencies:
   # メッセージ送信の冪等キー(client_message_id)生成
   uuid: ^4.5.3
 
+  # アイコン（絵文字の代わりに使用）
+  lucide_icons: ^0.257.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

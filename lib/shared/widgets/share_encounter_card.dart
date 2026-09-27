@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/constants/app_colors.dart';
@@ -21,6 +22,7 @@ import '../models/user_model.dart';
 Future<void> shareEncounter({
   required BuildContext context,
   required String occasionEmoji,
+  required IconData occasionIcon,
   required String occasionTitle,
   UserModel? myUser,
   Vehicle? myVehicle,
@@ -64,7 +66,7 @@ Future<void> shareEncounter({
     final bytes = await captureWidgetAsPng(
       context,
       _ShareCard(
-        occasionEmoji: occasionEmoji,
+        occasionIcon: occasionIcon,
         occasionTitle: occasionTitle,
         myNickname: myUser?.nickname ?? 'あなた',
         myPhotoUrl: myPhotoUrl,
@@ -108,7 +110,7 @@ Future<String?> _resolvePhotoUrl(Vehicle? vehicle) async {
 }
 
 class _ShareCard extends StatelessWidget {
-  final String occasionEmoji;
+  final IconData occasionIcon;
   final String occasionTitle;
   final String myNickname;
   final String? myPhotoUrl;
@@ -116,7 +118,7 @@ class _ShareCard extends StatelessWidget {
   final String? otherPhotoUrl;
 
   const _ShareCard({
-    required this.occasionEmoji,
+    required this.occasionIcon,
     required this.occasionTitle,
     required this.myNickname,
     this.myPhotoUrl,
@@ -140,7 +142,7 @@ class _ShareCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(occasionEmoji, style: const TextStyle(fontSize: 100)),
+          Icon(occasionIcon, size: 100, color: Colors.white),
           const SizedBox(height: 24),
           Text(
             occasionTitle,
@@ -161,11 +163,8 @@ class _ShareCard extends StatelessWidget {
                         nickname: myNickname, photoUrl: myPhotoUrl)),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Text('✕',
-                      style: TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 48,
-                          fontWeight: FontWeight.w900)),
+                  child: Icon(LucideIcons.x,
+                      color: AppColors.primary, size: 48),
                 ),
                 Expanded(
                     child: _CardVehicle(

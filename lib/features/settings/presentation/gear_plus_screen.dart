@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/revenuecat/revenuecat_config.dart';
@@ -181,16 +182,22 @@ class _GearPlusScreenState extends ConsumerState<GearPlusScreen> {
                     border:
                         Border.all(color: AppColors.primary.withOpacity(0.3)),
                   ),
-                  child: const Text(
-                    '🎁 初回限定 1ヶ月無料\n'
-                    '無料期間終了後は解約しない限り月額¥500に自動更新されます',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 13,
-                      height: 1.6,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    textAlign: TextAlign.center,
+                  child: const Column(
+                    children: [
+                      Icon(LucideIcons.gift, size: 20, color: AppColors.primary),
+                      SizedBox(height: 6),
+                      Text(
+                        '初回限定 1ヶ月無料\n'
+                        '無料期間終了後は解約しない限り月額¥500に自動更新されます',
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 13,
+                          height: 1.6,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),

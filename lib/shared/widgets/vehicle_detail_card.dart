@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/focal_point.dart';
 import '../../features/vehicle/data/vehicle_repository.dart';
@@ -59,7 +60,9 @@ class _VehicleDetailCardState extends State<VehicleDetailCard> {
   @override
   Widget build(BuildContext context) {
     final v = widget.vehicle;
-    final typeLabel = v.vehicleType == VehicleType.bike ? '🏍 バイク' : '🚗 車';
+    final typeIcon =
+        v.vehicleType == VehicleType.bike ? LucideIcons.bike : LucideIcons.car;
+    final typeLabel = v.vehicleType == VehicleType.bike ? 'バイク' : '車';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -183,6 +186,8 @@ class _VehicleDetailCardState extends State<VehicleDetailCard> {
                 // タイプ + 年式
                 Row(
                   children: [
+                    Icon(typeIcon, size: 12, color: AppColors.textMuted),
+                    const SizedBox(width: 3),
                     Text(typeLabel,
                         style: const TextStyle(
                             color: AppColors.textMuted, fontSize: 12)),

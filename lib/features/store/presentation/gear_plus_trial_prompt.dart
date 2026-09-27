@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
@@ -119,7 +120,7 @@ class GearPlusTrialPrompt {
             backgroundColor: AppColors.surface,
             title: const Row(
               children: [
-                Text('⚡', style: TextStyle(fontSize: 24)),
+                Icon(LucideIcons.zap, size: 24, color: AppColors.primary),
                 SizedBox(width: 8),
                 Text('Gear+ のお試しが始まりました！'),
               ],

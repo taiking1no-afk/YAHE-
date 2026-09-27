@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import '../../core/supabase/supabase_config.dart';
 import '../../features/auth/presentation/auth_provider.dart';
 import '../../features/home/data/encounter_repository.dart';
@@ -91,6 +92,7 @@ Future<void> showUserProfile(
               await shareEncounter(
                 context: context,
                 occasionEmoji: '🎉',
+                occasionIcon: LucideIcons.partyPopper,
                 occasionTitle: 'マッチしました！',
                 myUser: me,
                 myVehicle: myVehicle,
@@ -154,6 +156,7 @@ Future<void> showUserProfile(
               await shareEncounter(
                 context: context,
                 occasionEmoji: '🎉',
+                occasionIcon: LucideIcons.partyPopper,
                 occasionTitle: 'マッチしました！',
                 myUser: me,
                 myVehicle: myVehicle,
